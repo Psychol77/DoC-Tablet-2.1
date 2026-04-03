@@ -18,6 +18,7 @@ class DOCSystemTester:
         self.test_user_id = None
         self.test_asset_id = None
         self.test_assignment_id = None
+        self.personal_asset_id = None
 
     def log_test(self, name, success, details=""):
         """Log test result"""
@@ -360,6 +361,163 @@ class DOCSystemTester:
         else:
             return self.log_test("Delete User", False, f"Status: {response.status_code}")
 
+    def test_employee_login(self):
+        """Test employee login"""
+        employee_credentials = {
+            "email": "test@doc.gov",
+            "password": "Test123!"
+        }
+        success, response = self.make_request('POST', 'auth/login', employee_credentials)
+        if success:
+            try:
+                data = response.json()
+                if data.get('role') == 'employee' and data.get('email') == 'test@doc.gov':
+                    return self.log_test("Employee Login", True)
+                else:
+                    return self.log_test("Employee Login", False, "Invalid response data")
+            except:
+                return self.log_test("Employee Login", False, "Invalid JSON response")
+        else:
+            return self.log_test("Employee Login", False, f"Status: {response.status_code}")
+
+    def test_employee_add_personal_equipment(self):
+        """Test employee adding personal equipment (auto-assigned)"""
+        personal_equipment = {
+            "name": f"Personal Flashlight {datetime.now().strftime('%H%M%S')}",
+            "serialNumber": f"PF-{datetime.now().strftime('%H%M%S')}",
+            "category": "Inne",
+            "status": "W użyciu"
+        }
+        
+        success, response = self.make_request('POST', 'assets/my-equipment', personal_equipment, 200)
+        if success:
+            try:
+                data = response.json()
+                self.personal_asset_id = data.get('id')
+                # Check if equipment is auto-assigned and has createdBy field
+                if (self.personal_asset_id and 
+                    data.get('name') == personal_equipment['name'] and
+                    data.get('assignedTo') and  # Should be auto-assigned
+                    data.get('createdBy')):  # Should have createdBy field
+                    return self.log_test("Employee Add Personal Equipment", True)
+                else:
+                    return self.log_test("Employee Add Personal Equipment", False, "Equipment not properly auto-assigned")
+            except:
+                return self.log_test("Employee Add Personal Equipment", False, "Invalid JSON response")
+        else:
+            return self.log_test("Employee Add Personal Equipment", False, f"Status: {response.status_code}")
+
+    def test_employee_edit_own_equipment(self):
+        """Test employee editing their own equipment"""
+        if not hasattr(self, 'personal_asset_id') or not self.personal_asset_id:
+            return self.log_test("Employee Edit Own Equipment", False, "No personal asset ID available")
+        
+        equipment_update = {
+            "name": f"Updated Personal Flashlight {datetime.now().strftime('%H%M%S')}",
+            "serialNumber": f"UPF-{datetime.now().strftime('%H%M%S')}",
+            "category": "Inne",  # Should be forced to "Inne" for employees
+            "status": "W użyciu"
+        }
+        
+        success, response = self.make_request('PUT', f'assets/{self.personal_asset_id}', equipment_update)
+        if success:
+            try:
+                data = response.json()
+                if data.get('name') == equipment_update['name']:
+                    return self.log_test("Employee Edit Own Equipment", True)
+                else:
+                    return self.log_test("Employee Edit Own Equipment", False, "Equipment not updated correctly")
+            except:
+                return self.log_test("Employee Edit Own Equipment", False, "Invalid JSON response")
+        else:
+            return self.log_test("Employee Edit Own Equipment", False, f"Status: {response.status_code}")
+
+    def test_employee_cannot_edit_others_equipment(self):
+        """Test employee cannot edit equipment they didn't create"""
+        if not self.test_asset_id:
+            return self.log_test("Employee Cannot Edit Others Equipment", False, "No admin asset ID available")
+        
+        equipment_update = {
+            "name": "Unauthorized Update",
+            "serialNumber": "UNAUTH-001",
+            "category": "Inne",
+            "status": "W użyciu"
+        }
+        
+        success, response = self.make_request('PUT', f'assets/{self.test_asset_id}', equipment_update, 403)
+        if success:
+            return self.log_test("Employee Cannot Edit Others Equipment", True)
+        else:
+            return self.log_test("Employee Cannot Edit Others Equipment", False, f"Expected 403, got {response.status_code}")
+
+    def test_personal_equipment_badge_in_assets_list(self):
+        """Test that personal equipment shows createdBy field in assets list"""
+        success, response = self.make_request('GET', 'assets')
+        if success:
+            try:
+                data = response.json()
+                if isinstance(data, list):
+                    # Look for personal equipment with createdBy field
+                    personal_equipment = [asset for asset in data if asset.get('createdBy')]
+                    if personal_equipment:
+                        return self.log_test("Personal Equipment Badge in Assets List", True)
+                    else:
+                        return self.log_test("Personal Equipment Badge in Assets List", False, "No personal equipment found with createdBy field")
+                else:
+                    return self.log_test("Personal Equipment Badge in Assets List", False, "Invalid assets list")
+            except:
+                return self.log_test("Personal Equipment Badge in Assets List", False, "Invalid JSON response")
+        else:
+            return self.log_test("Personal Equipment Badge in Assets List", False, f"Status: {response.status_code}")
+
+    def test_admin_can_manage_all_equipment(self):
+        """Test admin can edit all equipment including personal equipment"""
+        # First login as admin
+        admin_login_success, _ = self.make_request('POST', 'auth/login', self.admin_credentials)
+        if not admin_login_success:
+            return self.log_test("Admin Can Manage All Equipment", False, "Admin login failed")
+        
+        if not hasattr(self, 'personal_asset_id') or not self.personal_asset_id:
+            return self.log_test("Admin Can Manage All Equipment", False, "No personal asset ID available")
+        
+        equipment_update = {
+            "name": f"Admin Updated Equipment {datetime.now().strftime('%H%M%S')}",
+            "serialNumber": f"ADM-{datetime.now().strftime('%H%M%S')}",
+            "category": "Elektronika",  # Admin can change category
+            "status": "W naprawie"
+        }
+        
+        success, response = self.make_request('PUT', f'assets/{self.personal_asset_id}', equipment_update)
+        if success:
+            try:
+                data = response.json()
+                if data.get('name') == equipment_update['name'] and data.get('category') == equipment_update['category']:
+                    return self.log_test("Admin Can Manage All Equipment", True)
+                else:
+                    return self.log_test("Admin Can Manage All Equipment", False, "Equipment not updated correctly")
+            except:
+                return self.log_test("Admin Can Manage All Equipment", False, "Invalid JSON response")
+        else:
+            return self.log_test("Admin Can Manage All Equipment", False, f"Status: {response.status_code}")
+
+    def test_cascade_delete_personal_equipment(self):
+        """Test cascade delete of personal equipment"""
+        if not hasattr(self, 'personal_asset_id') or not self.personal_asset_id:
+            return self.log_test("Cascade Delete Personal Equipment", False, "No personal asset ID available")
+        
+        success, response = self.make_request('DELETE', f'assets/{self.personal_asset_id}')
+        if success:
+            try:
+                data = response.json()
+                if "wraz z przypisaniami" in data.get('message', ''):
+                    return self.log_test("Cascade Delete Personal Equipment", True)
+                else:
+                    return self.log_test("Cascade Delete Personal Equipment", False, "Unexpected response message")
+            except:
+                return self.log_test("Cascade Delete Personal Equipment", False, "Invalid JSON response")
+        else:
+            return self.log_test("Cascade Delete Personal Equipment", False, f"Status: {response.status_code}")
+
     def test_auth_logout(self):
         """Test logout"""
         success, response = self.make_request('POST', 'auth/logout')
@@ -383,7 +541,7 @@ class DOCSystemTester:
         # Authentication tests
         print("\n📋 Authentication Tests:")
         if not self.test_auth_login():
-            print("❌ Login failed - stopping tests")
+            print("❌ Admin login failed - stopping tests")
             return False
         
         self.test_auth_me()
@@ -411,8 +569,23 @@ class DOCSystemTester:
         print("\n📋 Audit & Logging Tests:")
         self.test_get_audit_logs()
         
+        print("\n📋 Personal Equipment Tests (Employee):")
+        # Login as employee for personal equipment tests
+        if not self.test_employee_login():
+            print("❌ Employee login failed - skipping personal equipment tests")
+        else:
+            self.test_employee_add_personal_equipment()
+            self.test_employee_edit_own_equipment()
+            self.test_employee_cannot_edit_others_equipment()
+            self.test_personal_equipment_badge_in_assets_list()
+            
+            # Switch back to admin for admin tests
+            print("\n📋 Admin Equipment Management Tests:")
+            self.test_admin_can_manage_all_equipment()
+        
         print("\n📋 Cascade Delete Tests:")
         self.test_cascade_delete_asset()
+        self.test_cascade_delete_personal_equipment()
         self.test_delete_user()
         
         print("\n📋 Logout Test:")

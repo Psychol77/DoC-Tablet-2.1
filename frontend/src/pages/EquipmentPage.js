@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { Package, Plus, Search, Trash2, Edit, UserPlus } from 'lucide-react';
+import { Package, Plus, Search, Trash2, Edit, UserPlus, User } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
@@ -38,7 +38,7 @@ const CATEGORIES = ['Broń', 'Wyposażenie', 'Elektronika', 'Pojazdy', 'Odzież'
 const STATUSES = ['Dostępny', 'W użyciu', 'W naprawie', 'Niedostępny'];
 
 export function EquipmentPage() {
-  const { isFounder } = useAuth();
+  const { user, isFounder } = useAuth();
   const [assets, setAssets] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -195,6 +195,13 @@ export function EquipmentPage() {
     setIsAssignDialogOpen(true);
   };
 
+  // Check if current user can manage this asset
+  const canManageAsset = (asset) => {
+    if (isFounder) return true;
+    // Employee can only manage their own equipment
+    return asset.createdBy === user?.id;
+  };
+
   const filteredAssets = assets.filter(asset => 
     `${asset.name} ${asset.serialNumber} ${asset.category}`.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -300,6 +307,15 @@ export function EquipmentPage() {
         )}
       </div>
 
+      {/* Info for employees */}
+      {!isFounder && (
+        <div className="mb-6 p-4 bg-blue-400/10 border border-blue-400/20 rounded-sm">
+          <p className="text-blue-400 text-sm">
+            Możesz zarządzać tylko sprzętem, który sam dodałeś. Aby dodać własny sprzęt, przejdź do zakładki "Mój profil".
+          </p>
+        </div>
+      )}
+
       {/* Search */}
       <div className="mb-6">
         <div className="relative max-w-md">
@@ -327,9 +343,7 @@ export function EquipmentPage() {
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-zinc-400">Kategoria</th>
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-zinc-400">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-zinc-400">Przypisany do</th>
-                {isFounder && (
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-zinc-400">Akcje</th>
-                )}
+                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-zinc-400">Akcje</th>
               </tr>
             </thead>
             <tbody>
@@ -339,7 +353,18 @@ export function EquipmentPage() {
                   className="border-b border-zinc-800/50 hover:bg-zinc-900/50 transition-colors"
                   data-testid={`asset-row-${asset.id}`}
                 >
-                  <td className="px-4 py-3 text-zinc-200">{asset.name}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-zinc-200">{asset.name}</span>
+                      {/* Badge for personal equipment */}
+                      {asset.createdBy && (
+                        <span className="inline-flex items-center gap-1 bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded-sm text-xs">
+                          <User className="w-3 h-3" />
+                          Osobisty
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <span className="font-mono text-xs text-zinc-400 bg-zinc-950 px-1.5 py-0.5 rounded-sm border border-zinc-800">
                       {asset.serialNumber}
@@ -362,75 +387,84 @@ export function EquipmentPage() {
                   <td className="px-4 py-3 text-zinc-300">
                     {asset.assignedToName || <span className="text-zinc-600">—</span>}
                   </td>
-                  {isFounder && (
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {!asset.assignedTo ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openAssignDialog(asset)}
-                            data-testid={`assign-asset-${asset.id}`}
-                            className="text-zinc-400 hover:text-green-400"
-                          >
-                            <UserPlus className="w-4 h-4" />
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleUnassignAsset(asset.id)}
-                            data-testid={`unassign-asset-${asset.id}`}
-                            className="text-zinc-400 hover:text-yellow-400"
-                          >
-                            Oddaj
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditDialog(asset)}
-                          data-testid={`edit-asset-${asset.id}`}
-                          className="text-zinc-400 hover:text-yellow-400"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {/* Assignment controls - only for founder */}
+                      {isFounder && (
+                        <>
+                          {!asset.assignedTo ? (
                             <Button
                               variant="ghost"
                               size="sm"
-                              data-testid={`delete-asset-${asset.id}`}
-                              className="text-zinc-400 hover:text-red-400"
+                              onClick={() => openAssignDialog(asset)}
+                              data-testid={`assign-asset-${asset.id}`}
+                              className="text-zinc-400 hover:text-green-400"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <UserPlus className="w-4 h-4" />
                             </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent className="bg-zinc-900 border-zinc-800">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="text-zinc-100">Usuwanie sprzętu</AlertDialogTitle>
-                              <AlertDialogDescription className="text-zinc-400">
-                                Czy na pewno chcesz usunąć <span className="text-yellow-400 font-semibold">{asset.name}</span>?
-                                <br /><br />
-                                <span className="text-red-400 font-semibold">USUWANIE KASKADOWE:</span> System automatycznie usunie również wszystkie przypisania tego sprzętu.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel className="bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700">
-                                Anuluj
-                              </AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDeleteAsset(asset.id)}
-                                className="bg-red-500 text-white hover:bg-red-600"
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleUnassignAsset(asset.id)}
+                              data-testid={`unassign-asset-${asset.id}`}
+                              className="text-zinc-400 hover:text-yellow-400"
+                            >
+                              Oddaj
+                            </Button>
+                          )}
+                        </>
+                      )}
+                      
+                      {/* Edit/Delete - only if user can manage this asset */}
+                      {canManageAsset(asset) && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(asset)}
+                            data-testid={`edit-asset-${asset.id}`}
+                            className="text-zinc-400 hover:text-yellow-400"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                data-testid={`delete-asset-${asset.id}`}
+                                className="text-zinc-400 hover:text-red-400"
                               >
-                                Usuń
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </td>
-                  )}
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-zinc-900 border-zinc-800">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="text-zinc-100">Usuwanie sprzętu</AlertDialogTitle>
+                                <AlertDialogDescription className="text-zinc-400">
+                                  Czy na pewno chcesz usunąć <span className="text-yellow-400 font-semibold">{asset.name}</span>?
+                                  <br /><br />
+                                  <span className="text-red-400 font-semibold">USUWANIE KASKADOWE:</span> System automatycznie usunie również wszystkie przypisania tego sprzętu.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700">
+                                  Anuluj
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteAsset(asset.id)}
+                                  className="bg-red-500 text-white hover:bg-red-600"
+                                >
+                                  Usuń
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -480,6 +514,7 @@ export function EquipmentPage() {
                 <Select
                   value={editAsset.category}
                   onValueChange={(value) => setEditAsset({...editAsset, category: value})}
+                  disabled={!isFounder && selectedAsset?.createdBy === user?.id}
                 >
                   <SelectTrigger className="bg-zinc-950 border-zinc-800 text-zinc-100">
                     <SelectValue />
@@ -492,6 +527,9 @@ export function EquipmentPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {!isFounder && (
+                  <p className="text-xs text-zinc-500">Kategoria: Inne (WYPOSAŻENIE)</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label className="text-zinc-400 text-xs uppercase tracking-wider">Status</Label>

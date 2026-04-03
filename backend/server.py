@@ -456,6 +456,7 @@ async def create_asset(data: AssetCreate, request: Request):
         "serialNumber": data.serialNumber,
         "category": data.category,
         "status": data.status,
+        "createdBy": None,  # Created by admin, no owner
         "createdAt": datetime.now(timezone.utc).isoformat()
     }
     
@@ -476,6 +477,58 @@ async def create_asset(data: AssetCreate, request: Request):
         "status": data.status,
         "assignedTo": None,
         "assignedToName": None,
+        "createdBy": None,
+        "createdAt": asset_doc["createdAt"]
+    }
+
+# Employee adds their own equipment (auto-assigned)
+@api_router.post("/assets/my-equipment")
+async def create_my_equipment(data: AssetCreate, request: Request):
+    current_user = await get_current_user(request)
+    
+    # Force category to "Inne" (WYPOSAŻENIE) for employee-added equipment
+    if current_user["role"] != "founder":
+        data.category = "Inne"
+    
+    existing = await db.assets.find_one({"serialNumber": data.serialNumber})
+    if existing:
+        raise HTTPException(status_code=400, detail="Numer seryjny już istnieje")
+    
+    asset_doc = {
+        "name": data.name,
+        "serialNumber": data.serialNumber,
+        "category": data.category,
+        "status": "W użyciu",  # Auto status for personal equipment
+        "createdBy": current_user["id"],  # Track who created it
+        "createdAt": datetime.now(timezone.utc).isoformat()
+    }
+    
+    result = await db.assets.insert_one(asset_doc)
+    asset_id = str(result.inserted_id)
+    
+    # Auto-assign to the creator
+    assignment_doc = {
+        "assetId": asset_id,
+        "userId": current_user["id"],
+        "createdAt": datetime.now(timezone.utc).isoformat()
+    }
+    await db.assignments.insert_one(assignment_doc)
+    
+    await log_audit(
+        "CREATE", "ASSET", asset_id,
+        current_user["id"], f"{current_user['firstName']} {current_user['lastName']}",
+        f"Dodano własny sprzęt: {data.name} (S/N: {data.serialNumber})"
+    )
+    
+    return {
+        "id": asset_id,
+        "name": data.name,
+        "serialNumber": data.serialNumber,
+        "category": data.category,
+        "status": "W użyciu",
+        "assignedTo": current_user["id"],
+        "assignedToName": f"[{current_user['badgeNumber']}] {current_user['firstName']} {current_user['lastName']}",
+        "createdBy": current_user["id"],
         "createdAt": asset_doc["createdAt"]
     }
 
@@ -503,6 +556,7 @@ async def get_assets(request: Request):
             "status": asset.get("status", "Dostępny"),
             "assignedTo": assigned_to,
             "assignedToName": assigned_to_name,
+            "createdBy": asset.get("createdBy"),
             "createdAt": asset.get("createdAt", "")
         })
     return result
@@ -534,14 +588,13 @@ async def get_asset(asset_id: str, request: Request):
         "status": asset.get("status", "Dostępny"),
         "assignedTo": assigned_to,
         "assignedToName": assigned_to_name,
+        "createdBy": asset.get("createdBy"),
         "createdAt": asset.get("createdAt", "")
     }
 
 @api_router.put("/assets/{asset_id}")
 async def update_asset(asset_id: str, data: AssetCreate, request: Request):
     current_user = await get_current_user(request)
-    if current_user["role"] != "founder":
-        raise HTTPException(status_code=403, detail="Brak uprawnień")
     
     try:
         asset = await db.assets.find_one({"_id": ObjectId(asset_id)})
@@ -549,6 +602,13 @@ async def update_asset(asset_id: str, data: AssetCreate, request: Request):
         raise HTTPException(status_code=400, detail="Nieprawidłowe ID")
     if not asset:
         raise HTTPException(status_code=404, detail="Sprzęt nie znaleziony")
+    
+    # Check permissions: founder can edit all, employee can edit only their own
+    if current_user["role"] != "founder":
+        if asset.get("createdBy") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Możesz edytować tylko swój sprzęt")
+        # Force category to "Inne" for employee
+        data.category = "Inne"
     
     # Check if serial number is taken by another asset
     existing = await db.assets.find_one({"serialNumber": data.serialNumber, "_id": {"$ne": ObjectId(asset_id)}})
@@ -573,8 +633,6 @@ async def update_asset(asset_id: str, data: AssetCreate, request: Request):
 @api_router.delete("/assets/{asset_id}")
 async def delete_asset(asset_id: str, request: Request):
     current_user = await get_current_user(request)
-    if current_user["role"] != "founder":
-        raise HTTPException(status_code=403, detail="Brak uprawnień")
     
     try:
         asset = await db.assets.find_one({"_id": ObjectId(asset_id)})
@@ -582,6 +640,11 @@ async def delete_asset(asset_id: str, request: Request):
         raise HTTPException(status_code=400, detail="Nieprawidłowe ID")
     if not asset:
         raise HTTPException(status_code=404, detail="Sprzęt nie znaleziony")
+    
+    # Check permissions: founder can delete all, employee can delete only their own
+    if current_user["role"] != "founder":
+        if asset.get("createdBy") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Możesz usuwać tylko swój sprzęt")
     
     # Cascade delete: remove assignments first
     await db.assignments.delete_many({"assetId": asset_id})
