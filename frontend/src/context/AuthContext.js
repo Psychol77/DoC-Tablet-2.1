@@ -83,6 +83,8 @@ export function AuthProvider({ children }) {
     logout,
     refreshUser,
     isFounder: user?.role === 'founder',
+    canEditProfiles: user?.canEditProfiles || user?.role === 'founder',
+    isOfficerRank: user?.isOfficerRank,
     isAuthenticated: !!user
   };
 

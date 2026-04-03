@@ -101,6 +101,8 @@ class ProfileUpdate(BaseModel):
     trainings: Optional[dict] = None
     notes: Optional[str] = None
     promotionDate: Optional[str] = None
+    badgeNumber: Optional[str] = None
+    position: Optional[str] = None
 
 class AuditLogResponse(BaseModel):
     id: str
@@ -166,6 +168,20 @@ async def get_current_user(request: Request) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Nieprawidłowy token")
 
+# Position hierarchy for permissions
+BOARD_POSITIONS = ['Warden', 'D. Warden', 'AoW']
+COMMAND_POSITIONS = ['Captain', 'Lieutenant']
+MANAGEMENT_POSITIONS = BOARD_POSITIONS + COMMAND_POSITIONS  # Can edit others
+OFFICERS_POSITIONS = ['Sergeant', 'PO III', 'PO II', 'PO I', 'Kadet']  # Read-only own profile
+
+def can_edit_profiles(user: dict) -> bool:
+    """Check if user can edit other users' profiles"""
+    return user["role"] == "founder" or user.get("position") in MANAGEMENT_POSITIONS
+
+def is_officer_rank(user: dict) -> bool:
+    """Check if user is in Officers group (read-only own profile)"""
+    return user.get("position") in OFFICERS_POSITIONS
+
 async def log_audit(action: str, entity_type: str, entity_id: str, user_id: str, user_name: str, details: str):
     await db.audit_logs.insert_one({
         "action": action,
@@ -195,6 +211,13 @@ async def login(data: UserLogin, response: Response):
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=False, samesite="lax", max_age=3600, path="/")
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
     
+    # Create user dict for permission checks
+    user_dict = {
+        "id": user_id,
+        "role": user["role"],
+        "position": user.get("position", "")
+    }
+    
     return {
         "id": user_id,
         "email": user["email"],
@@ -207,7 +230,9 @@ async def login(data: UserLogin, response: Response):
         "trainings": user.get("trainings", {}),
         "notes": user.get("notes", ""),
         "promotionDate": user.get("promotionDate"),
-        "createdAt": user.get("createdAt", "")
+        "createdAt": user.get("createdAt", ""),
+        "canEditProfiles": can_edit_profiles(user_dict),
+        "isOfficerRank": is_officer_rank(user_dict)
     }
 
 @api_router.post("/auth/logout")
@@ -231,7 +256,9 @@ async def get_me(request: Request):
         "trainings": user.get("trainings", {}),
         "notes": user.get("notes", ""),
         "promotionDate": user.get("promotionDate"),
-        "createdAt": user.get("createdAt", "")
+        "createdAt": user.get("createdAt", ""),
+        "canEditProfiles": can_edit_profiles(user),
+        "isOfficerRank": is_officer_rank(user)
     }
 
 @api_router.post("/auth/refresh")
@@ -259,10 +286,27 @@ async def refresh_token(request: Request, response: Response):
 
 # ==================== USER ENDPOINTS ====================
 
+# Public endpoint for basic user list (names and positions only)
+@api_router.get("/users/public")
+async def get_users_public(request: Request):
+    """Public endpoint - returns only basic info needed for equipment assignment display"""
+    await get_current_user(request)  # Still requires auth, but any role can access
+    users = await db.users.find({}, {"_id": 1, "firstName": 1, "lastName": 1, "badgeNumber": 1, "position": 1}).to_list(1000)
+    result = []
+    for user in users:
+        result.append({
+            "id": str(user["_id"]),
+            "firstName": user.get("firstName", ""),
+            "lastName": user.get("lastName", ""),
+            "badgeNumber": user.get("badgeNumber", ""),
+            "position": user.get("position", "")
+        })
+    return result
+
 @api_router.post("/users")
 async def create_user(data: UserCreate, request: Request):
     current_user = await get_current_user(request)
-    if current_user["role"] != "founder":
+    if not can_edit_profiles(current_user):
         raise HTTPException(status_code=403, detail="Brak uprawnień")
     
     email = data.email.lower().strip()
@@ -370,8 +414,6 @@ async def get_user(user_id: str, request: Request):
 @api_router.put("/users/{user_id}")
 async def update_user(user_id: str, data: ProfileUpdate, request: Request):
     current_user = await get_current_user(request)
-    if current_user["role"] != "founder":
-        raise HTTPException(status_code=403, detail="Brak uprawnień do edycji")
     
     try:
         user = await db.users.find_one({"_id": ObjectId(user_id)})
@@ -379,6 +421,18 @@ async def update_user(user_id: str, data: ProfileUpdate, request: Request):
         raise HTTPException(status_code=400, detail="Nieprawidłowe ID")
     if not user:
         raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
+    
+    # Permission check:
+    # - Founder can edit all
+    # - Board/Command (management) can edit all
+    # - Officers can NOT edit their own profile (read-only)
+    is_own_profile = user_id == current_user["id"]
+    
+    if is_own_profile and is_officer_rank(current_user):
+        raise HTTPException(status_code=403, detail="Nie możesz edytować własnego profilu")
+    
+    if not is_own_profile and not can_edit_profiles(current_user):
+        raise HTTPException(status_code=403, detail="Brak uprawnień do edycji tego profilu")
     
     update_data = {}
     if data.meritBars is not None:
@@ -389,6 +443,14 @@ async def update_user(user_id: str, data: ProfileUpdate, request: Request):
         update_data["notes"] = data.notes
     if data.promotionDate is not None:
         update_data["promotionDate"] = data.promotionDate
+    if data.badgeNumber is not None:
+        # Check if badge number is already taken by another user
+        existing_badge = await db.users.find_one({"badgeNumber": data.badgeNumber, "_id": {"$ne": ObjectId(user_id)}})
+        if existing_badge:
+            raise HTTPException(status_code=400, detail="Numer odznaki już istnieje")
+        update_data["badgeNumber"] = data.badgeNumber
+    if data.position is not None:
+        update_data["position"] = data.position
     
     if update_data:
         await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": update_data})
@@ -786,7 +848,8 @@ async def delete_assignment(assignment_id: str, request: Request):
 @api_router.get("/audit-logs")
 async def get_audit_logs(request: Request):
     current_user = await get_current_user(request)
-    if current_user["role"] != "founder":
+    # Allow founder and management (Board/Command) to access audit logs
+    if not can_edit_profiles(current_user):
         raise HTTPException(status_code=403, detail="Brak uprawnień")
     
     logs = await db.audit_logs.find({}).sort("createdAt", -1).to_list(500)

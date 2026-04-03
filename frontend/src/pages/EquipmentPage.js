@@ -82,7 +82,8 @@ export function EquipmentPage() {
 
   const fetchEmployees = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/users`, {
+      // Use public endpoint for basic user info
+      const response = await axios.get(`${API_URL}/api/users/public`, {
         withCredentials: true
       });
       setEmployees(response.data);

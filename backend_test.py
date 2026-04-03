@@ -518,6 +518,105 @@ class DOCSystemTester:
         else:
             return self.log_test("Cascade Delete Personal Equipment", False, f"Status: {response.status_code}")
 
+    def test_public_users_endpoint(self):
+        """Test public users endpoint"""
+        success, response = self.make_request('GET', 'users/public')
+        if success:
+            try:
+                data = response.json()
+                if isinstance(data, list):
+                    # Check if response contains only basic info (no sensitive data)
+                    if data and all(
+                        'firstName' in user and 'lastName' in user and 'badgeNumber' in user and 'position' in user
+                        and 'password_hash' not in user and 'email' not in user
+                        for user in data
+                    ):
+                        return self.log_test("Public Users Endpoint", True)
+                    else:
+                        return self.log_test("Public Users Endpoint", False, "Response contains sensitive data or missing required fields")
+                else:
+                    return self.log_test("Public Users Endpoint", False, "Invalid response format")
+            except:
+                return self.log_test("Public Users Endpoint", False, "Invalid JSON response")
+        else:
+            return self.log_test("Public Users Endpoint", False, f"Status: {response.status_code}")
+
+    def test_permission_hierarchy_captain(self):
+        """Test Captain can edit profiles"""
+        captain_credentials = {
+            "email": "captain@doc.gov",
+            "password": "Captain123!"
+        }
+        success, response = self.make_request('POST', 'auth/login', captain_credentials)
+        if success:
+            try:
+                data = response.json()
+                if data.get('canEditProfiles') == True and data.get('position') == 'Captain':
+                    return self.log_test("Captain Permission Check", True)
+                else:
+                    return self.log_test("Captain Permission Check", False, f"canEditProfiles: {data.get('canEditProfiles')}, position: {data.get('position')}")
+            except:
+                return self.log_test("Captain Permission Check", False, "Invalid JSON response")
+        else:
+            return self.log_test("Captain Permission Check", False, f"Status: {response.status_code}")
+
+    def test_permission_hierarchy_lieutenant(self):
+        """Test Lieutenant can edit profiles"""
+        lieutenant_credentials = {
+            "email": "lieutenant@doc.gov",
+            "password": "Lieutenant123!"
+        }
+        success, response = self.make_request('POST', 'auth/login', lieutenant_credentials)
+        if success:
+            try:
+                data = response.json()
+                if data.get('canEditProfiles') == True and data.get('position') == 'Lieutenant':
+                    return self.log_test("Lieutenant Permission Check", True)
+                else:
+                    return self.log_test("Lieutenant Permission Check", False, f"canEditProfiles: {data.get('canEditProfiles')}, position: {data.get('position')}")
+            except:
+                return self.log_test("Lieutenant Permission Check", False, "Invalid JSON response")
+        else:
+            return self.log_test("Lieutenant Permission Check", False, f"Status: {response.status_code}")
+
+    def test_permission_hierarchy_sergeant(self):
+        """Test Sergeant cannot edit profiles (read-only)"""
+        sergeant_credentials = {
+            "email": "sergeant@doc.gov",
+            "password": "Sergeant123!"
+        }
+        success, response = self.make_request('POST', 'auth/login', sergeant_credentials)
+        if success:
+            try:
+                data = response.json()
+                if data.get('canEditProfiles') == False and data.get('isOfficerRank') == True and data.get('position') == 'Sergeant':
+                    return self.log_test("Sergeant Permission Check", True)
+                else:
+                    return self.log_test("Sergeant Permission Check", False, f"canEditProfiles: {data.get('canEditProfiles')}, isOfficerRank: {data.get('isOfficerRank')}, position: {data.get('position')}")
+            except:
+                return self.log_test("Sergeant Permission Check", False, "Invalid JSON response")
+        else:
+            return self.log_test("Sergeant Permission Check", False, f"Status: {response.status_code}")
+
+    def test_permission_hierarchy_officer(self):
+        """Test Officer (test@doc.gov) cannot edit own profile"""
+        officer_credentials = {
+            "email": "test@doc.gov",
+            "password": "Test123!"
+        }
+        success, response = self.make_request('POST', 'auth/login', officer_credentials)
+        if success:
+            try:
+                data = response.json()
+                if data.get('canEditProfiles') == False and data.get('isOfficerRank') == True:
+                    return self.log_test("Officer Permission Check", True)
+                else:
+                    return self.log_test("Officer Permission Check", False, f"canEditProfiles: {data.get('canEditProfiles')}, isOfficerRank: {data.get('isOfficerRank')}")
+            except:
+                return self.log_test("Officer Permission Check", False, "Invalid JSON response")
+        else:
+            return self.log_test("Officer Permission Check", False, f"Status: {response.status_code}")
+
     def test_auth_logout(self):
         """Test logout"""
         success, response = self.make_request('POST', 'auth/logout')
@@ -587,6 +686,19 @@ class DOCSystemTester:
         self.test_cascade_delete_asset()
         self.test_cascade_delete_personal_equipment()
         self.test_delete_user()
+        
+        print("\n📋 Permission Hierarchy Tests:")
+        self.test_permission_hierarchy_captain()
+        self.test_permission_hierarchy_lieutenant()
+        self.test_permission_hierarchy_sergeant()
+        self.test_permission_hierarchy_officer()
+        
+        print("\n📋 Public Endpoint Tests:")
+        # Login as admin first for public endpoint test
+        if not self.test_auth_login():
+            print("❌ Admin login failed for public endpoint test")
+        else:
+            self.test_public_users_endpoint()
         
         print("\n📋 Logout Test:")
         self.test_auth_logout()

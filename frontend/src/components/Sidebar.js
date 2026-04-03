@@ -18,7 +18,7 @@ const navItems = [
 ];
 
 export function Sidebar() {
-  const { user, logout, isFounder } = useAuth();
+  const { user, logout, isFounder, canEditProfiles } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -68,7 +68,7 @@ export function Sidebar() {
             </li>
           ))}
           
-          {isFounder && (
+          {(isFounder || canEditProfiles) && (
             <li>
               <NavLink
                 to="/audit-log"

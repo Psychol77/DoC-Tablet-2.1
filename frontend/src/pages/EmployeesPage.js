@@ -26,8 +26,7 @@ const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const POSITIONS = [
   'Warden', 'D. Warden', 'AoW',
-  'Captain',
-  'Lieutenant',
+  'Captain', 'Lieutenant',
   'Sergeant',
   'PO III', 'PO II', 'PO I', 'Kadet'
 ];
@@ -41,7 +40,7 @@ const HIERARCHY_GROUPS = {
 };
 
 export function EmployeesPage() {
-  const { isFounder } = useAuth();
+  const { canEditProfiles } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,13 +61,22 @@ export function EmployeesPage() {
 
   const fetchEmployees = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/users`, {
+      // Use public endpoint that returns basic info for all users
+      const response = await axios.get(`${API_URL}/api/users/public`, {
         withCredentials: true
       });
       setEmployees(response.data);
     } catch (error) {
       console.error('Error fetching employees:', error);
-      toast.error('Błąd podczas pobierania pracowników');
+      // Fallback to full endpoint if public fails
+      try {
+        const fallbackResponse = await axios.get(`${API_URL}/api/users`, {
+          withCredentials: true
+        });
+        setEmployees(fallbackResponse.data);
+      } catch (fallbackError) {
+        toast.error('Błąd podczas pobierania pracowników');
+      }
     } finally {
       setLoading(false);
     }
@@ -116,7 +124,7 @@ export function EmployeesPage() {
           <p className="text-zinc-400">Lista wszystkich funkcjonariuszy w systemie</p>
         </div>
         
-        {isFounder && (
+        {canEditProfiles && (
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button 
