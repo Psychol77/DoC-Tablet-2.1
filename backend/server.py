@@ -45,7 +45,7 @@ class UserCreate(BaseModel):
     password: str
     firstName: str
     lastName: str
-    badgeNumber: str
+    badgeNumber: str  # Validated in endpoint: 1-999
     position: str
     role: str = "employee"
 
@@ -61,7 +61,7 @@ class UserResponse(BaseModel):
     badgeNumber: str
     position: str
     role: str
-    meritBars: List[str] = []
+    meritBars: List[bool] = []  # Changed to checkboxes (6 booleans)
     trainings: dict = {}
     notes: str = ""
     promotionDate: Optional[str] = None
@@ -97,12 +97,21 @@ class AssignmentResponse(BaseModel):
     createdAt: str
 
 class ProfileUpdate(BaseModel):
-    meritBars: Optional[List[str]] = None
+    meritBars: Optional[List[bool]] = None  # Changed to checkboxes
     trainings: Optional[dict] = None
     notes: Optional[str] = None
     promotionDate: Optional[str] = None
-    badgeNumber: Optional[str] = None
+    badgeNumber: Optional[str] = None  # Validated: 1-999
     position: Optional[str] = None
+
+# Badge number validation helper
+def validate_badge_number(badge: str) -> bool:
+    """Validate badge number: must be 1-999 (max 3 digits)"""
+    try:
+        num = int(badge)
+        return 1 <= num <= 999
+    except ValueError:
+        return False
 
 class AuditLogResponse(BaseModel):
     id: str
@@ -309,6 +318,10 @@ async def create_user(data: UserCreate, request: Request):
     if not can_edit_profiles(current_user):
         raise HTTPException(status_code=403, detail="Brak uprawnień")
     
+    # Validate badge number (1-999)
+    if not validate_badge_number(data.badgeNumber):
+        raise HTTPException(status_code=400, detail="Numer odznaki musi być liczbą od 1 do 999")
+    
     email = data.email.lower().strip()
     existing = await db.users.find_one({"email": email})
     if existing:
@@ -326,7 +339,7 @@ async def create_user(data: UserCreate, request: Request):
         "badgeNumber": data.badgeNumber,
         "position": data.position,
         "role": data.role,
-        "meritBars": ["", "", "", "", "", ""],
+        "meritBars": [False, False, False, False, False, False],  # 6 checkboxes
         "trainings": {
             "OPP": False,
             "KPP": False,
@@ -444,6 +457,9 @@ async def update_user(user_id: str, data: ProfileUpdate, request: Request):
     if data.promotionDate is not None:
         update_data["promotionDate"] = data.promotionDate
     if data.badgeNumber is not None:
+        # Validate badge number (1-999)
+        if not validate_badge_number(data.badgeNumber):
+            raise HTTPException(status_code=400, detail="Numer odznaki musi być liczbą od 1 do 999")
         # Check if badge number is already taken by another user
         existing_badge = await db.users.find_one({"badgeNumber": data.badgeNumber, "_id": {"$ne": ObjectId(user_id)}})
         if existing_badge:
