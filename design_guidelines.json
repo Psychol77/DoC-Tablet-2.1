@@ -1,0 +1,148 @@
+{
+  "theme_settings": {
+    "mode": "dark",
+    "archetype": "Archetype 4 (Swiss & High-Contrast) - Tactical Variant",
+    "design_philosophy": "Utilitarian, high-contrast command center layout. Emphasizes legibility, strict hierarchy, and raw data exposure over decorative elements. Uses dark zinc base with stark white text and bright warning yellow for focal points."
+  },
+  "colors": {
+    "background": "#09090b",
+    "surface": "#18181b",
+    "surface_elevated": "#27272a",
+    "primary": "#facc15",
+    "primary_foreground": "#09090b",
+    "secondary": "#27272a",
+    "secondary_foreground": "#fafafa",
+    "border": "#27272a",
+    "text_primary": "#fafafa",
+    "text_secondary": "#a1a1aa",
+    "danger": "#ef4444",
+    "danger_foreground": "#ffffff",
+    "success": "#22c55e",
+    "success_foreground": "#ffffff",
+    "tailwind_classes": {
+      "bg_app": "bg-zinc-950",
+      "bg_panel": "bg-zinc-900",
+      "bg_card": "bg-zinc-900",
+      "text_main": "text-zinc-50",
+      "text_muted": "text-zinc-400",
+      "border_default": "border-zinc-800",
+      "accent_primary": "bg-yellow-400 text-zinc-950 hover:bg-yellow-500",
+      "accent_secondary": "bg-zinc-800 text-zinc-100 hover:bg-zinc-700 border-zinc-700"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Chivo",
+      "body": "Inter",
+      "mono": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-3xl md:text-4xl font-bold tracking-tight text-zinc-50",
+      "h2": "text-2xl md:text-3xl font-semibold tracking-tight text-zinc-50",
+      "h3": "text-xl font-semibold text-zinc-50",
+      "body": "text-sm md:text-base leading-relaxed text-zinc-300",
+      "label": "text-xs font-bold uppercase tracking-[0.15em] text-zinc-400",
+      "badge": "font-mono text-sm tracking-widest text-yellow-400"
+    }
+  },
+  "layout_and_spacing": {
+    "grid_system": "Control Room Protocol (Dense, data-focused grids)",
+    "container_padding": "p-4 md:p-6 lg:p-8",
+    "gap_strategy": "gap-4 md:gap-6",
+    "border_radius": "rounded-none md:rounded-sm",
+    "structural_rules": {
+      "sidebar": "fixed left-0 top-0 h-full w-64 border-r border-zinc-800 bg-zinc-950 flex flex-col z-40",
+      "main_content": "ml-64 min-h-screen bg-zinc-950",
+      "cards": "border border-zinc-800 bg-zinc-900 p-4 md:p-6"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-yellow-400 text-zinc-950 hover:bg-yellow-500 font-bold rounded-sm px-4 py-2 transition-colors inline-flex items-center justify-center",
+      "secondary": "bg-transparent text-zinc-300 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 rounded-sm px-4 py-2 transition-colors inline-flex items-center justify-center",
+      "danger": "bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 rounded-sm px-4 py-2 transition-colors"
+    },
+    "inputs": {
+      "default": "bg-zinc-950 border border-zinc-800 rounded-sm text-zinc-100 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-yellow-400 focus:border-yellow-400 placeholder:text-zinc-600 transition-all",
+      "disabled": "disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-zinc-900/50"
+    },
+    "tables": {
+      "container": "w-full overflow-hidden border border-zinc-800 rounded-sm",
+      "header": "bg-zinc-900 border-b border-zinc-800 text-xs font-bold uppercase tracking-wider text-zinc-400 text-left",
+      "row": "border-b border-zinc-800/50 hover:bg-zinc-900/50 transition-colors",
+      "cell": "px-4 py-3 text-sm text-zinc-300 whitespace-nowrap"
+    },
+    "badges": {
+      "status_active": "bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded-sm text-xs font-medium uppercase",
+      "status_inactive": "bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-sm text-xs font-medium uppercase",
+      "serial_number": "font-mono text-xs text-zinc-400 bg-zinc-950 px-1.5 py-0.5 rounded-sm border border-zinc-800"
+    }
+  },
+  "module_specific_instructions": {
+    "navigation": {
+      "title": "System Department Of Corrections",
+      "items": [
+        "Panel główny",
+        "Sprzęt",
+        "Wszyscy pracownicy",
+        "Mój profil"
+      ],
+      "active_state": "bg-zinc-800 text-yellow-400 border-l-2 border-yellow-400",
+      "inactive_state": "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+    },
+    "employee_list": {
+      "hierarchy_groups": [
+        "BOARD (Warden, D. Warden, AoW)",
+        "HIGH COMMAND (Captain)",
+        "COMMAND (Lieutenant)",
+        "SERGEANT (Sergeant)",
+        "OFFICERS (PO III, PO II, PO I, Kadet)"
+      ],
+      "group_header_style": "bg-zinc-50 text-zinc-950 font-bold uppercase tracking-[0.15em] py-2 px-4 rounded-sm mb-2 mt-8 flex items-center shadow-[0_0_15px_rgba(255,255,255,0.1)]",
+      "table_format": "[Odznaka] Imię Nazwisko | Stopień | Status",
+      "badge_display": "font-mono text-yellow-400 font-bold mr-2"
+    },
+    "officer_profile": {
+      "permissions": "If user role is 'employee', heavily enforce disabled UI. Inputs and checkboxes must visually reflect read-only state (opacity-50, cursor-not-allowed). If 'founder', full interactive access.",
+      "merit_bars": "6 text fields (Paski Zasługi) styled aggressively in a grid to look like military ribbon slots.",
+      "trainings": "Checkboxes for: OPP, KPP, Strzelanie, Taktyka, Prawo, Pierwsza Pomoc. Grouped in a tactical 2-column or 3-column bento layout.",
+      "assigned_equipment_list": "Display item Name + S/N prominently. S/N should use the `serial_number` mono badge style."
+    },
+    "equipment_inventory": {
+      "layout": "Data-heavy table prioritizing S/N, Name, Category, Status, and Assignee.",
+      "delete_action": "Requires a visual confirmation (dialog) highlighting 'Usuwanie kaskadowe' (cascading delete) warning in red."
+    },
+    "registration": {
+      "requirements": "Form must include Badge Number (numeric/text input) and Position (select dropdown). Must feel like a secured terminal entry."
+    }
+  },
+  "visual_enhancers": {
+    "borders": "Utilize 1px solid strokes (border-zinc-800) heavily to define regions. Avoid soft drop shadows. Use 'Inner Glow' highlights sparingly.",
+    "hover_states": "Interactive elements must lighten on hover. Yellow buttons get brighter. Zinc buttons get lighter zinc backgrounds.",
+    "icons": "Use 'lucide-react'. Icons should be crisp, sized w-4 h-4 or w-5 h-5, and stroke-width 2."
+  },
+  "assets": {
+    "images": {
+      "doc_logo": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/55e7a3f8-51c4-4947-ad9f-521e5730ebf2/images/3981a70c4aa550c060c50b85595daba21b0780f677279179893c93e0deaf2e87.png",
+        "description": "Department of Corrections Shield Logo. Use in sidebar header.",
+        "usage": "sidebar_logo"
+      },
+      "tactical_bg": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/55e7a3f8-51c4-4947-ad9f-521e5730ebf2/images/5de27d329c58409b622ddebaeb23dc1e6d4efccf783f4507bc2381cdf948e83b.png",
+        "description": "Tactical grid background. Use for login page or empty states with max 10% opacity overlay.",
+        "usage": "login_background"
+      },
+      "tactical_gear_placeholder": {
+        "url": "https://images.unsplash.com/photo-1595499591024-bf6ca07ca95f",
+        "description": "Tactical gear photo. Use as a banner in the Equipment page header if visual interest is needed.",
+        "usage": "equipment_banner"
+      }
+    }
+  },
+  "accessibility_and_testing": {
+    "data_testid": "ALL interactive elements MUST include `data-testid` attributes (e.g., `data-testid=\"login-submit-button\"`, `data-testid=\"nav-equipment\"`).",
+    "contrast": "Ensure pure white or bright yellow on dark zinc backgrounds for AAA contrast.",
+    "animations": "Minimalist micro-interactions only. Avoid bouncy or slow transitions. Use quick, sharp transitions (duration-150 ease-out) fitting a military UI."
+  }
+}
