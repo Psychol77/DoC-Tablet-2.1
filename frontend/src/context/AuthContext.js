@@ -27,6 +27,15 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const tryRefreshToken = useCallback(async () => {
+    try {
+      await axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const checkAuth = useCallback(async () => {
     try {
       const response = await axios.get(`${API_URL}/api/auth/me`, {
@@ -34,15 +43,80 @@ export function AuthProvider({ children }) {
       });
       setUser(response.data);
     } catch (e) {
+      // Try refresh token if access token expired
+      if (e.response?.status === 401) {
+        const refreshed = await tryRefreshToken();
+        if (refreshed) {
+          try {
+            const response = await axios.get(`${API_URL}/api/auth/me`, {
+              withCredentials: true
+            });
+            setUser(response.data);
+            return;
+          } catch {
+            // refresh succeeded but /me still fails
+          }
+        }
+      }
       setUser(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tryRefreshToken]);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  // Global axios interceptor for automatic token refresh
+  useEffect(() => {
+    let isRefreshing = false;
+    let failedQueue = [];
+
+    const processQueue = (error) => {
+      failedQueue.forEach(prom => {
+        if (error) prom.reject(error);
+        else prom.resolve();
+      });
+      failedQueue = [];
+    };
+
+    const interceptor = axios.interceptors.response.use(
+      response => response,
+      async (error) => {
+        const originalRequest = error.config;
+        
+        if (error.response?.status === 401 && !originalRequest._retry && 
+            !originalRequest.url?.includes('/auth/login') && 
+            !originalRequest.url?.includes('/auth/refresh')) {
+          
+          if (isRefreshing) {
+            return new Promise((resolve, reject) => {
+              failedQueue.push({ resolve, reject });
+            }).then(() => axios(originalRequest));
+          }
+
+          originalRequest._retry = true;
+          isRefreshing = true;
+
+          try {
+            await axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true });
+            processQueue(null);
+            return axios(originalRequest);
+          } catch (refreshError) {
+            processQueue(refreshError);
+            setUser(null);
+            return Promise.reject(refreshError);
+          } finally {
+            isRefreshing = false;
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => axios.interceptors.response.eject(interceptor);
+  }, []);
 
   const login = async (email, password) => {
     setError(null);
