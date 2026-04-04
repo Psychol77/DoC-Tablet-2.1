@@ -235,7 +235,7 @@ async def login(data: UserLogin, response: Response):
         "badgeNumber": user.get("badgeNumber", ""),
         "position": user.get("position", ""),
         "role": user["role"],
-        "meritBars": user.get("meritBars", ["", "", "", "", "", ""]),
+        "meritBars": user.get("meritBars", [False, False, False, False, False, False]),
         "trainings": user.get("trainings", {}),
         "notes": user.get("notes", ""),
         "promotionDate": user.get("promotionDate"),
@@ -261,7 +261,7 @@ async def get_me(request: Request):
         "badgeNumber": user.get("badgeNumber", ""),
         "position": user.get("position", ""),
         "role": user["role"],
-        "meritBars": user.get("meritBars", ["", "", "", "", "", ""]),
+        "meritBars": user.get("meritBars", [False, False, False, False, False, False]),
         "trainings": user.get("trainings", {}),
         "notes": user.get("notes", ""),
         "promotionDate": user.get("promotionDate"),
@@ -391,7 +391,7 @@ async def get_users(request: Request):
             "badgeNumber": user.get("badgeNumber", ""),
             "position": user.get("position", ""),
             "role": user["role"],
-            "meritBars": user.get("meritBars", ["", "", "", "", "", ""]),
+            "meritBars": user.get("meritBars", [False, False, False, False, False, False]),
             "trainings": user.get("trainings", {}),
             "notes": user.get("notes", ""),
             "promotionDate": user.get("promotionDate"),
@@ -417,7 +417,7 @@ async def get_user(user_id: str, request: Request):
         "badgeNumber": user.get("badgeNumber", ""),
         "position": user.get("position", ""),
         "role": user["role"],
-        "meritBars": user.get("meritBars", ["", "", "", "", "", ""]),
+        "meritBars": user.get("meritBars", [False, False, False, False, False, False]),
         "trainings": user.get("trainings", {}),
         "notes": user.get("notes", ""),
         "promotionDate": user.get("promotionDate"),
@@ -485,7 +485,7 @@ async def update_user(user_id: str, data: ProfileUpdate, request: Request):
         "badgeNumber": updated_user.get("badgeNumber", ""),
         "position": updated_user.get("position", ""),
         "role": updated_user["role"],
-        "meritBars": updated_user.get("meritBars", ["", "", "", "", "", ""]),
+        "meritBars": updated_user.get("meritBars", [False, False, False, False, False, False]),
         "trainings": updated_user.get("trainings", {}),
         "notes": updated_user.get("notes", ""),
         "promotionDate": updated_user.get("promotionDate"),
@@ -611,20 +611,39 @@ async def create_my_equipment(data: AssetCreate, request: Request):
     }
 
 @api_router.get("/assets")
-async def get_assets(request: Request):
-    await get_current_user(request)
-    assets = await db.assets.find({}).to_list(1000)
+async def get_assets(request: Request, status: Optional[str] = None, assigned_to: Optional[str] = None, search: Optional[str] = None):
+    current_user = await get_current_user(request)
+    
+    # Build query
+    query = {}
+    if status:
+        query["status"] = status
+    
+    assets = await db.assets.find(query).to_list(1000)
     result = []
     for asset in assets:
         asset_id = str(asset["_id"])
         assignment = await db.assignments.find_one({"assetId": asset_id})
-        assigned_to = None
+        assigned_to_val = None
         assigned_to_name = None
         if assignment:
-            assigned_to = assignment["userId"]
+            assigned_to_val = assignment["userId"]
             user = await db.users.find_one({"_id": ObjectId(assignment["userId"])})
             if user:
                 assigned_to_name = f"[{user['badgeNumber']}] {user['firstName']} {user['lastName']}"
+        
+        # Filter by assigned user if specified
+        if assigned_to and assigned_to_val != assigned_to:
+            continue
+        
+        # Server-side search
+        if search:
+            search_lower = search.lower()
+            name_match = asset["name"].lower().find(search_lower) >= 0
+            serial_match = asset.get("serialNumber", "").lower().find(search_lower) >= 0
+            person_match = (assigned_to_name or "").lower().find(search_lower) >= 0
+            if not (name_match or serial_match or person_match):
+                continue
         
         result.append({
             "id": asset_id,
@@ -632,7 +651,7 @@ async def get_assets(request: Request):
             "serialNumber": asset["serialNumber"],
             "category": asset.get("category", "Inne"),
             "status": asset.get("status", "Dostępny"),
-            "assignedTo": assigned_to,
+            "assignedTo": assigned_to_val,
             "assignedToName": assigned_to_name,
             "createdBy": asset.get("createdBy"),
             "createdAt": asset.get("createdAt", "")
@@ -943,7 +962,7 @@ async def startup_event():
             "badgeNumber": "0001",
             "position": "Warden",
             "role": "founder",
-            "meritBars": ["", "", "", "", "", ""],
+            "meritBars": [False, False, False, False, False, False],
             "trainings": {
                 "OPP": True,
                 "KPP": True,
@@ -960,6 +979,13 @@ async def startup_event():
     elif not verify_password(admin_password, existing["password_hash"]):
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
         logger.info(f"Admin password updated: {admin_email}")
+    
+    # Migrate old string meritBars to boolean for all users
+    async for u in db.users.find({"meritBars": {"$exists": True}}):
+        bars = u.get("meritBars", [])
+        if bars and isinstance(bars[0], str):
+            new_bars = [bool(b and b.strip()) for b in bars]
+            await db.users.update_one({"_id": u["_id"]}, {"$set": {"meritBars": new_bars}})
     
     # Write test credentials
     import os as os_module

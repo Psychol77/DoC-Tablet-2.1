@@ -1,149 +1,117 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { useParams } from 'react-router-dom';
+import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { MERIT_BARS, TRAININGS, RANKS_CONFIG, POSITIONS, validateBadgeNumber, cn } from '../lib/utils';
+import { Loader2, ShieldAlert, Package, Award, User, ShieldCheck, Settings2, Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Checkbox } from '../components/ui/checkbox';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from '../components/ui/dialog';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, 
+  AlertDialogTitle, AlertDialogTrigger 
 } from '../components/ui/alert-dialog';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from '../components/ui/select';
-import { Award, BookOpen, Package, Save, Plus, Edit, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
-
-const TRAININGS = [
-  { key: 'OPP', label: 'OPP' },
-  { key: 'KPP', label: 'KPP' },
-  { key: 'Strzelanie', label: 'Strzelanie' },
-  { key: 'Taktyka', label: 'Taktyka' },
-  { key: 'Prawo', label: 'Prawo' },
-  { key: 'PierwszaPomoc', label: 'Pierwsza Pomoc' },
-];
-
-const POSITIONS = [
-  'Warden', 'D. Warden', 'AoW',
-  'Captain', 'Lieutenant',
-  'Sergeant',
-  'PO III', 'PO II', 'PO I', 'Kadet'
-];
 
 // Officers ranks - read-only own profile
 const OFFICERS_POSITIONS = ['Sergeant', 'PO III', 'PO II', 'PO I', 'Kadet'];
 
-export function ProfilePage() {
+export default function ProfilePage() {
   const { userId } = useParams();
-  const { user: currentUser, refreshUser } = useAuth();
-  const [profile, setProfile] = useState(null);
-  const [assignments, setAssignments] = useState([]);
+  const { user: loggedInUser, refreshUser } = useAuth();
+  const [profileData, setProfileData] = useState(null);
+  const [userAssets, setUserAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [meritBars, setMeritBars] = useState(['', '', '', '', '', '']);
+  
+  // Editable fields
+  const [meritBars, setMeritBars] = useState([false, false, false, false, false, false]);
   const [trainings, setTrainings] = useState({});
   const [badgeNumber, setBadgeNumber] = useState('');
   const [position, setPosition] = useState('');
   
-  // Equipment dialog state
+  // Equipment dialog
   const [isAddEquipmentOpen, setIsAddEquipmentOpen] = useState(false);
-  const [isEditEquipmentOpen, setIsEditEquipmentOpen] = useState(false);
-  const [selectedEquipment, setSelectedEquipment] = useState(null);
   const [newEquipment, setNewEquipment] = useState({ name: '', serialNumber: '' });
-  const [editEquipment, setEditEquipment] = useState({ name: '', serialNumber: '' });
 
-  const targetUserId = userId || currentUser?.id;
-  const isOwnProfile = !userId || userId === currentUser?.id;
+  const targetId = userId || loggedInUser?.id;
+  const isOwnProfile = !userId || userId === loggedInUser?.id;
   
-  // Permission logic based on position hierarchy
-  const isOfficerRank = OFFICERS_POSITIONS.includes(currentUser?.position);
-  const canEditProfiles = currentUser?.role === 'founder' || currentUser?.canEditProfiles;
+  // Permission logic
+  const isOfficerRank = OFFICERS_POSITIONS.includes(loggedInUser?.position);
+  const canEditProfiles = loggedInUser?.role === 'founder' || loggedInUser?.canEditProfiles;
   
-  // Can edit this profile if:
-  // - Current user is management (Board/Command) and viewing someone else's profile
-  // - Current user is management viewing their own profile (they can edit their own)
-  // - Current user is founder
-  // Officers (Kadet, PO I-III, Sergeant) can NEVER edit their own profile
+  // Can edit this profile if management viewing someone else, or management viewing their own (not officer)
   const canEditThisProfile = isOwnProfile 
-    ? (canEditProfiles && !isOfficerRank)  // Own profile: only if management AND not officer rank
-    : canEditProfiles;  // Other's profile: only if has edit permissions
+    ? (canEditProfiles && !isOfficerRank)
+    : canEditProfiles;
 
   useEffect(() => {
-    if (targetUserId) {
+    if (targetId) {
       fetchProfile();
-      fetchAssignments();
+      fetchUserAssets();
     }
-  }, [targetUserId]);
+  }, [targetId]);
 
   const fetchProfile = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/users/${targetUserId}`, {
-        withCredentials: true
-      });
-      const data = response.data;
-      setProfile(data);
-      setMeritBars(data.meritBars || ['', '', '', '', '', '']);
-      setTrainings(data.trainings || {});
-      setBadgeNumber(data.badgeNumber || '');
-      setPosition(data.position || '');
+      setLoading(true);
+      const userRes = await axios.get(`${API_URL}/api/users/${targetId}`, { withCredentials: true });
+      const foundUser = userRes.data;
+      
+      if (foundUser) {
+        setProfileData(foundUser);
+        // Handle meritBars - convert to boolean array if needed
+        const bars = foundUser.meritBars || [];
+        if (typeof bars[0] === 'boolean') {
+          setMeritBars(bars);
+        } else {
+          // Legacy: convert string array to boolean (check if has value)
+          setMeritBars(bars.map(b => Boolean(b && b.trim())));
+        }
+        setTrainings(foundUser.trainings || {});
+        setBadgeNumber(foundUser.badgeNumber || '');
+        setPosition(foundUser.position || '');
+      }
     } catch (error) {
-      console.error('Error fetching profile:', error);
-      toast.error('Błąd podczas pobierania profilu');
+      toast.error("Błąd podczas ładowania profilu");
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchAssignments = async () => {
+  const fetchUserAssets = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/assignments/user/${targetUserId}`, {
-        withCredentials: true
-      });
-      const assignmentsWithDetails = await Promise.all(
-        response.data.map(async (assignment) => {
-          try {
-            const assetResponse = await axios.get(`${API_URL}/api/assets/${assignment.assetId}`, {
-              withCredentials: true
-            });
-            return {
-              ...assignment,
-              createdBy: assetResponse.data.createdBy
-            };
-          } catch {
-            return assignment;
-          }
-        })
+      const assetsRes = await axios.get(`${API_URL}/api/assets`, { withCredentials: true });
+      // Filter assets assigned to this user and not disposed
+      const assignedAssets = assetsRes.data.filter(asset => 
+        asset.assignedTo && String(asset.assignedTo) === String(targetId) && asset.status !== 'Zutylizowany'
       );
-      setAssignments(assignmentsWithDetails);
+      setUserAssets(assignedAssets);
     } catch (error) {
-      console.error('Error fetching assignments:', error);
+      console.error('Error fetching assets:', error);
     }
   };
 
   const handleSave = async () => {
     if (!canEditThisProfile) return;
+    
+    // Validate badge number
+    if (badgeNumber && !validateBadgeNumber(badgeNumber)) {
+      toast.error('Numer odznaki musi być liczbą od 1 do 999');
+      return;
+    }
+    
     setSaving(true);
     try {
       const updateData = {
@@ -151,41 +119,38 @@ export function ProfilePage() {
         trainings
       };
       
-      // Only include badge and position if user can edit profiles (management)
-      if (canEditProfiles) {
+      if (canEditProfiles && !isOwnProfile) {
         updateData.badgeNumber = badgeNumber;
         updateData.position = position;
       }
       
-      await axios.put(`${API_URL}/api/users/${targetUserId}`, updateData, {
-        withCredentials: true
-      });
-      toast.success('Profil zaktualizowany');
+      await axios.put(`${API_URL}/api/users/${targetId}`, updateData, { withCredentials: true });
+      toast.success("Zaktualizowano akta");
+      
       if (isOwnProfile) {
         await refreshUser();
       }
       fetchProfile();
-    } catch (error) {
-      const msg = error.response?.data?.detail || 'Błąd podczas zapisywania';
-      toast.error(msg);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Błąd zapisu");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTrainingChange = (key, checked) => {
-    if (!canEditThisProfile) return;
-    setTrainings(prev => ({ ...prev, [key]: checked }));
-  };
-
-  const handleMeritBarChange = (index, value) => {
+  const toggleMeritBar = (index) => {
     if (!canEditThisProfile) return;
     const newBars = [...meritBars];
-    newBars[index] = value;
+    newBars[index] = !newBars[index];
     setMeritBars(newBars);
   };
 
-  // Equipment management
+  const toggleTraining = (key) => {
+    if (!canEditThisProfile) return;
+    setTrainings(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Equipment management - only for own profile
   const handleAddEquipment = async (e) => {
     e.preventDefault();
     try {
@@ -194,386 +159,318 @@ export function ProfilePage() {
         serialNumber: newEquipment.serialNumber,
         category: 'Inne',
         status: 'W użyciu'
-      }, {
-        withCredentials: true
-      });
+      }, { withCredentials: true });
+      
       toast.success('Sprzęt dodany i przypisany');
       setIsAddEquipmentOpen(false);
       setNewEquipment({ name: '', serialNumber: '' });
-      fetchAssignments();
+      fetchUserAssets();
     } catch (error) {
-      const msg = error.response?.data?.detail || 'Błąd podczas dodawania sprzętu';
-      toast.error(msg);
+      toast.error(error.response?.data?.detail || 'Błąd podczas dodawania');
     }
   };
 
-  const handleEditEquipment = async (e) => {
-    e.preventDefault();
-    if (!selectedEquipment) return;
+  const handleDisposeEquipment = async (assetId, assetName) => {
     try {
-      await axios.put(`${API_URL}/api/assets/${selectedEquipment.assetId}`, {
-        name: editEquipment.name,
-        serialNumber: editEquipment.serialNumber,
+      await axios.put(`${API_URL}/api/assets/${assetId}`, {
+        name: assetName,
+        serialNumber: userAssets.find(a => a.id === assetId)?.serialNumber || '',
         category: 'Inne',
-        status: 'W użyciu'
-      }, {
-        withCredentials: true
-      });
-      toast.success('Sprzęt zaktualizowany');
-      setIsEditEquipmentOpen(false);
-      setSelectedEquipment(null);
-      fetchAssignments();
+        status: 'Zutylizowany'
+      }, { withCredentials: true });
+      
+      toast.success('Sprzęt zutylizowany');
+      fetchUserAssets();
     } catch (error) {
-      const msg = error.response?.data?.detail || 'Błąd podczas aktualizacji';
-      toast.error(msg);
+      toast.error(error.response?.data?.detail || 'Błąd podczas utylizacji');
     }
   };
 
-  const handleDeleteEquipment = async (assetId) => {
-    try {
-      await axios.delete(`${API_URL}/api/assets/${assetId}`, {
-        withCredentials: true
-      });
-      toast.success('Sprzęt usunięty');
-      fetchAssignments();
-    } catch (error) {
-      const msg = error.response?.data?.detail || 'Błąd podczas usuwania';
-      toast.error(msg);
-    }
-  };
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-zinc-950">
+      <Loader2 className="w-10 h-10 text-yellow-500 animate-spin" />
+    </div>
+  );
 
-  const openEditEquipmentDialog = (assignment) => {
-    setSelectedEquipment(assignment);
-    setEditEquipment({
-      name: assignment.assetName,
-      serialNumber: assignment.assetSerialNumber
-    });
-    setIsEditEquipmentOpen(true);
-  };
-
-  const canEditEquipmentItem = (assignment) => {
-    if (currentUser?.role === 'founder' || canEditProfiles) return true;
-    return isOwnProfile && assignment.createdBy === currentUser?.id;
-  };
-
-  if (loading) {
-    return (
-      <div className="p-6 lg:p-8">
-        <div className="text-center py-12 text-zinc-400">Ładowanie profilu...</div>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="p-6 lg:p-8">
-        <div className="text-center py-12 text-zinc-400">Profil nie znaleziony</div>
-      </div>
-    );
-  }
+  if (!profileData) return (
+    <div className="h-screen flex flex-col items-center justify-center bg-zinc-950 text-white p-4 text-center">
+      <ShieldAlert className="w-16 h-16 text-red-500 mb-4 opacity-50" />
+      <h1 className="text-xl font-black uppercase">Błąd dostępu do akt</h1>
+    </div>
+  );
 
   return (
-    <div className="p-6 lg:p-8" data-testid="profile-page">
+    <div className="p-8 text-white min-h-screen animate-in fade-in duration-500" data-testid="profile-page">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-3xl font-mono font-bold text-yellow-400">[{profile.badgeNumber}]</span>
-            <h1 className="text-3xl font-bold text-zinc-50 tracking-tight">
-              {profile.firstName} {profile.lastName}
-            </h1>
+      <div className="flex flex-col md:flex-row justify-between items-start border-b-2 border-yellow-500/20 pb-6 mb-8 gap-4">
+        <div className="flex items-center gap-6">
+          <div className="w-24 h-24 bg-zinc-900 border-2 border-zinc-800 flex items-center justify-center">
+             <User className="w-12 h-12 text-zinc-700" />
           </div>
-          <p className="text-zinc-400">
-            {profile.position} • {profile.role === 'founder' ? 'Founder' : 'Employee'}
-          </p>
-          <p className="text-zinc-500 text-sm mt-1">
-            {canEditThisProfile ? 'Możesz edytować ten profil' : 'Widok tylko do odczytu'}
-          </p>
-        </div>
-        
-        {canEditThisProfile && (
-          <Button 
-            onClick={handleSave}
-            disabled={saving}
-            data-testid="save-profile-button"
-            className="bg-yellow-400 text-zinc-950 hover:bg-yellow-500 font-bold rounded-sm"
-          >
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? 'Zapisywanie...' : 'Zapisz zmiany'}
-          </Button>
-        )}
-      </div>
-
-      {/* Read-only notice for officers */}
-      {isOwnProfile && isOfficerRank && (
-        <div className="mb-6 p-4 bg-yellow-400/10 border border-yellow-400/20 rounded-sm">
-          <p className="text-yellow-400 text-sm">
-            Jako funkcjonariusz niższego stopnia nie możesz edytować własnego profilu. Skontaktuj się z przełożonym w celu wprowadzenia zmian.
-          </p>
-        </div>
-      )}
-
-      {/* Management can edit badge and position */}
-      {canEditThisProfile && canEditProfiles && !isOwnProfile && (
-        <div className="mb-6 p-4 bg-zinc-900 border border-zinc-800 rounded-sm">
-          <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider mb-4">Dane służbowe</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label className="text-zinc-400 text-xs uppercase tracking-wider mb-1 block">Numer odznaki</Label>
-              <Input
-                value={badgeNumber}
-                onChange={(e) => setBadgeNumber(e.target.value)}
-                data-testid="edit-badge-number"
-                className="bg-zinc-950 border-zinc-800 text-zinc-100 font-mono"
-              />
-            </div>
-            <div>
-              <Label className="text-zinc-400 text-xs uppercase tracking-wider mb-1 block">Stopień</Label>
-              <Select value={position} onValueChange={setPosition}>
-                <SelectTrigger data-testid="edit-position" className="bg-zinc-950 border-zinc-800 text-zinc-100">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800">
-                  {POSITIONS.map(pos => (
-                    <SelectItem key={pos} value={pos} className="text-zinc-100 focus:bg-zinc-800">
-                      {pos}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div>
+            <h1 className="text-4xl font-black tracking-tighter uppercase italic leading-none">Akta Osobowe</h1>
+            <p className="text-yellow-500 font-black text-2xl mt-2 uppercase flex items-center gap-3">
+              {profileData.firstName} {profileData.lastName} 
+              <span className="text-zinc-600 font-mono text-xl">#{profileData.badgeNumber}</span>
+            </p>
           </div>
         </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Trainings */}
-        <div className="border border-zinc-800 bg-zinc-900 rounded-sm p-6">
-          <div className="flex items-center gap-2 mb-4 pb-4 border-b border-zinc-800">
-            <BookOpen className="w-5 h-5 text-yellow-400" />
-            <h2 className="text-lg font-semibold text-zinc-100">Szkolenia</h2>
+        <div className="flex items-center gap-4">
+          <div className="text-right text-[10px] text-zinc-500 font-mono tracking-widest uppercase bg-zinc-900/50 p-3 border border-zinc-800">
+            <p>Dept: DOC / Prison Authority</p>
+            <p>Dostęp: {canEditThisProfile ? 'ADMINISTRATOR' : 'TYLKO ODCZYT'}</p>
           </div>
-          
-          <div className="grid grid-cols-2 gap-3">
-            {TRAININGS.map(({ key, label }) => (
-              <div key={key} className="flex items-center gap-2">
-                <Checkbox
-                  id={`training-${key}`}
-                  checked={trainings[key] || false}
-                  onCheckedChange={(checked) => handleTrainingChange(key, checked)}
-                  disabled={!canEditThisProfile}
-                  data-testid={`training-${key}`}
-                  className="border-zinc-600 data-[state=checked]:bg-yellow-400 data-[state=checked]:border-yellow-400"
-                />
-                <Label 
-                  htmlFor={`training-${key}`}
-                  className={`text-sm ${trainings[key] ? 'text-zinc-200' : 'text-zinc-500'} ${!canEditThisProfile ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                >
-                  {label}
-                </Label>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Merit Bars */}
-        <div className="border border-zinc-800 bg-zinc-900 rounded-sm p-6">
-          <div className="flex items-center gap-2 mb-4 pb-4 border-b border-zinc-800">
-            <Award className="w-5 h-5 text-yellow-400" />
-            <h2 className="text-lg font-semibold text-zinc-100">Paski Zasługi</h2>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-3">
-            {meritBars.map((bar, index) => (
-              <div key={index}>
-                <Label className="text-xs text-zinc-500 uppercase tracking-wider mb-1 block">
-                  Pasek {index + 1}
-                </Label>
-                <Input
-                  value={bar}
-                  onChange={(e) => handleMeritBarChange(index, e.target.value)}
-                  disabled={!canEditThisProfile}
-                  data-testid={`merit-bar-${index}`}
-                  placeholder="—"
-                  className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder:text-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Equipment */}
-        <div className="border border-zinc-800 bg-zinc-900 rounded-sm p-6">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
-            <div className="flex items-center gap-2">
-              <Package className="w-5 h-5 text-yellow-400" />
-              <h2 className="text-lg font-semibold text-zinc-100">Wyposażenie</h2>
-            </div>
-            
-            {isOwnProfile && (
-              <Dialog open={isAddEquipmentOpen} onOpenChange={setIsAddEquipmentOpen}>
-                <DialogTrigger asChild>
-                  <Button 
-                    size="sm"
-                    data-testid="add-my-equipment-button"
-                    className="bg-yellow-400 text-zinc-950 hover:bg-yellow-500 font-bold rounded-sm"
-                  >
-                    <Plus className="w-4 h-4 mr-1" />
-                    Dodaj
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl font-bold">Dodaj własny sprzęt</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleAddEquipment} className="space-y-4 mt-4">
-                    <p className="text-sm text-zinc-400">
-                      Sprzęt zostanie automatycznie przypisany do Ciebie i pojawi się w ewidencji.
-                    </p>
-                    <div className="space-y-2">
-                      <Label className="text-zinc-400 text-xs uppercase tracking-wider">Nazwa</Label>
-                      <Input
-                        value={newEquipment.name}
-                        onChange={(e) => setNewEquipment({...newEquipment, name: e.target.value})}
-                        required
-                        data-testid="add-my-equipment-name"
-                        className="bg-zinc-950 border-zinc-800 text-zinc-100"
-                        placeholder="np. Latarka taktyczna"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-zinc-400 text-xs uppercase tracking-wider">Numer seryjny (S/N)</Label>
-                      <Input
-                        value={newEquipment.serialNumber}
-                        onChange={(e) => setNewEquipment({...newEquipment, serialNumber: e.target.value})}
-                        required
-                        data-testid="add-my-equipment-serial"
-                        className="bg-zinc-950 border-zinc-800 text-zinc-100 font-mono"
-                        placeholder="np. LT-2024-001"
-                      />
-                    </div>
-                    <Button 
-                      type="submit" 
-                      data-testid="add-my-equipment-submit"
-                      className="w-full bg-yellow-400 text-zinc-950 hover:bg-yellow-500 font-bold"
-                    >
-                      Dodaj sprzęt
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            )}
-          </div>
-          
-          {assignments.length === 0 ? (
-            <p className="text-zinc-500 text-sm">Brak przypisanego sprzętu</p>
-          ) : (
-            <div className="space-y-3">
-              {assignments.map(assignment => (
-                <div 
-                  key={assignment.id}
-                  className="p-3 bg-zinc-950 border border-zinc-800 rounded-sm"
-                  data-testid={`assigned-item-${assignment.id}`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-zinc-200 font-medium">{assignment.assetName}</p>
-                      <p className="font-mono text-xs text-zinc-400 bg-zinc-900 px-1.5 py-0.5 rounded-sm border border-zinc-800 inline-block mt-1">
-                        {assignment.assetSerialNumber}
-                      </p>
-                    </div>
-                    
-                    {canEditEquipmentItem(assignment) && (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditEquipmentDialog(assignment)}
-                          data-testid={`edit-my-equipment-${assignment.id}`}
-                          className="text-zinc-400 hover:text-yellow-400 h-7 w-7 p-0"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`delete-my-equipment-${assignment.id}`}
-                              className="text-zinc-400 hover:text-red-400 h-7 w-7 p-0"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent className="bg-zinc-900 border-zinc-800">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="text-zinc-100">Usuwanie sprzętu</AlertDialogTitle>
-                              <AlertDialogDescription className="text-zinc-400">
-                                Czy na pewno chcesz usunąć <span className="text-yellow-400 font-semibold">{assignment.assetName}</span>?
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel className="bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700">
-                                Anuluj
-                              </AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDeleteEquipment(assignment.assetId)}
-                                className="bg-red-500 text-white hover:bg-red-600"
-                              >
-                                Usuń
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+          {canEditThisProfile && (
+            <Button 
+              onClick={handleSave}
+              disabled={saving}
+              data-testid="save-profile-button"
+              className="bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase px-6 py-3 rounded-none"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Zapisz'}
+            </Button>
           )}
         </div>
       </div>
 
-      {/* Edit Equipment Dialog */}
-      <Dialog open={isEditEquipmentOpen} onOpenChange={setIsEditEquipmentOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">Edytuj sprzęt</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleEditEquipment} className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label className="text-zinc-400 text-xs uppercase tracking-wider">Nazwa</Label>
-              <Input
-                value={editEquipment.name}
-                onChange={(e) => setEditEquipment({...editEquipment, name: e.target.value})}
-                required
-                data-testid="edit-my-equipment-name"
-                className="bg-zinc-950 border-zinc-800 text-zinc-100"
-              />
+      {/* Read-only notice */}
+      {isOwnProfile && isOfficerRank && (
+        <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-none">
+          <p className="text-yellow-500 text-sm font-bold uppercase">
+            Jako funkcjonariusz niższego stopnia nie możesz edytować własnego profilu.
+          </p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8">
+          
+          {/* PANEL ADMINA - tylko dla zarządzających oglądających cudzy profil */}
+          {canEditThisProfile && canEditProfiles && !isOwnProfile && (
+            <section className="bg-zinc-900/40 border border-yellow-500/20 p-6">
+              <h2 className="text-xs font-black text-yellow-500 uppercase tracking-[0.3em] mb-4 flex items-center gap-2">
+                <Settings2 className="w-4 h-4" /> Panel Zarządzania
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-zinc-500 block mb-1">Nr Odznaki (1-999)</label>
+                  <Input 
+                    type="number"
+                    min="1"
+                    max="999"
+                    value={badgeNumber}
+                    onChange={(e) => setBadgeNumber(e.target.value)}
+                    data-testid="edit-badge-number"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-2 text-white font-mono rounded-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-zinc-500 block mb-1">Stopień</label>
+                  <Select value={position} onValueChange={setPosition}>
+                    <SelectTrigger data-testid="edit-position" className="bg-zinc-950 border-zinc-800 rounded-none text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-900 border-zinc-800">
+                      {POSITIONS.map(r => (
+                        <SelectItem key={r} value={r} className="text-white focus:bg-zinc-800">{r}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Ewidencja sprzętu */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xs font-black text-zinc-500 uppercase tracking-[0.3em] flex items-center gap-2">
+                <Package className="w-4 h-4 text-yellow-500" /> Ewidencja Wyposażenia
+              </h2>
+              
+              {isOwnProfile && (
+                <Dialog open={isAddEquipmentOpen} onOpenChange={setIsAddEquipmentOpen}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      size="sm"
+                      data-testid="add-my-equipment-button"
+                      className="bg-yellow-500 text-black font-black uppercase rounded-none hover:bg-yellow-400"
+                    >
+                      <Plus className="w-4 h-4 mr-1" /> Dodaj
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="bg-zinc-950 border-zinc-800 text-white">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-bold uppercase text-yellow-500">Dodaj własny sprzęt</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleAddEquipment} className="space-y-4 mt-4">
+                      <p className="text-sm text-zinc-400">
+                        Sprzęt zostanie automatycznie przypisany do Ciebie.
+                      </p>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase font-bold text-zinc-500">Nazwa</Label>
+                        <Input
+                          value={newEquipment.name}
+                          onChange={(e) => setNewEquipment({...newEquipment, name: e.target.value})}
+                          required
+                          data-testid="add-my-equipment-name"
+                          className="bg-zinc-900 border-zinc-800 text-white rounded-none"
+                          placeholder="np. Latarka taktyczna"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase font-bold text-zinc-500">Numer Seryjny (S/N)</Label>
+                        <Input
+                          value={newEquipment.serialNumber}
+                          onChange={(e) => setNewEquipment({...newEquipment, serialNumber: e.target.value})}
+                          required
+                          data-testid="add-my-equipment-serial"
+                          className="bg-zinc-900 border-zinc-800 text-white font-mono rounded-none"
+                          placeholder="np. LT-2024-001"
+                        />
+                      </div>
+                      <Button 
+                        type="submit" 
+                        data-testid="add-my-equipment-submit"
+                        className="w-full bg-yellow-500 text-black font-black uppercase rounded-none"
+                      >
+                        Dodaj sprzęt
+                      </Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label className="text-zinc-400 text-xs uppercase tracking-wider">Numer seryjny (S/N)</Label>
-              <Input
-                value={editEquipment.serialNumber}
-                onChange={(e) => setEditEquipment({...editEquipment, serialNumber: e.target.value})}
-                required
-                data-testid="edit-my-equipment-serial"
-                className="bg-zinc-950 border-zinc-800 text-zinc-100 font-mono"
-              />
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {userAssets.length > 0 ? (
+                userAssets.map((item) => (
+                  <div 
+                    key={item.id} 
+                    data-testid={`assigned-item-${item.id}`}
+                    className="bg-zinc-950 border-l-4 border-l-yellow-500 border border-zinc-800 p-4 flex justify-between items-start"
+                  >
+                    <div>
+                      <p className="text-[10px] text-zinc-500 uppercase font-black">{item.category}</p>
+                      <p className="text-lg font-black text-zinc-100 uppercase italic">{item.name}</p>
+                      <p className="font-mono text-[10px] text-yellow-500/80 mt-2">S/N: {item.serialNumber}</p>
+                    </div>
+                    
+                    {(isOwnProfile && item.createdBy === loggedInUser?.id) || canEditProfiles ? (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            data-testid={`dispose-equipment-${item.id}`}
+                            className="text-zinc-500 hover:text-red-500"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="text-white uppercase font-black">Zutylizuj sprzęt</AlertDialogTitle>
+                            <AlertDialogDescription className="text-zinc-400">
+                              Czy na pewno chcesz zutylizować <span className="text-yellow-500 font-bold">{item.name}</span>?
+                              <br /><br />
+                              Sprzęt zostanie oznaczony jako "Zutylizowany" i nie będzie już widoczny w aktywnym wyposażeniu.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel className="bg-zinc-900 border-zinc-800 text-white">Anuluj</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={() => handleDisposeEquipment(item.id, item.name)}
+                              className="bg-red-600 text-white uppercase font-black"
+                            >
+                              Zutylizuj
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : null}
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-full border border-dashed border-zinc-800 p-8 text-center text-zinc-600 uppercase font-bold text-xs">
+                  Brak przypisanego sprzętu w bazie
+                </div>
+              )}
             </div>
-            <Button 
-              type="submit" 
-              data-testid="edit-my-equipment-submit"
-              className="w-full bg-yellow-400 text-zinc-950 hover:bg-yellow-500 font-bold"
-            >
-              Zapisz zmiany
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </section>
+
+          {/* Szkolenia */}
+          <section className="bg-zinc-950 border border-zinc-800 p-6">
+            <h3 className="text-xs font-black text-zinc-500 uppercase tracking-[0.3em] mb-6">Certyfikaty i Szkolenia</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {TRAININGS.map(({ key, label }) => (
+                <button 
+                  key={key}
+                  onClick={() => toggleTraining(key)}
+                  disabled={!canEditThisProfile}
+                  data-testid={`training-${key}`}
+                  className={cn(
+                    "flex items-center gap-3 p-3 border text-left transition-all",
+                    trainings[key] 
+                      ? "border-green-500 bg-green-500/5 text-green-500" 
+                      : "border-zinc-900 text-zinc-700",
+                    !canEditThisProfile && "cursor-default opacity-50"
+                  )}
+                >
+                  <div className={cn("w-2 h-2 rounded-full", trainings[key] ? "bg-green-500" : "bg-zinc-800")} />
+                  <span className="text-[10px] font-black uppercase">{label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {/* Pasek boczny */}
+        <div className="space-y-6">
+          {/* Aktualny stopień */}
+          <div className="bg-yellow-500 p-6 text-black relative overflow-hidden group">
+            <h3 className="text-[10px] font-black uppercase tracking-widest mb-4 opacity-70">Aktualny Stopień</h3>
+            <p className="text-4xl font-black uppercase italic tracking-tighter leading-none relative z-10">{profileData.position}</p>
+            <div className="mt-4 pt-4 border-t border-black/10 flex justify-between items-center font-bold text-sm relative z-10">
+              <span>ODZNAKA:</span>
+              <span className="font-mono text-xl">#{profileData.badgeNumber}</span>
+            </div>
+            <ShieldCheck className="absolute -right-4 -bottom-4 w-24 h-24 text-black/10" />
+          </div>
+
+          {/* Paski Zasługi - 6 checkboxów */}
+          <div className="bg-zinc-950 border border-zinc-800 p-6">
+             <h3 className="text-xs font-black text-zinc-500 uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
+                <Award className="w-4 h-4 text-yellow-500" /> Paski Zasługi
+             </h3>
+             <div className="space-y-3">
+                {MERIT_BARS.map((merit, index) => (
+                  <button 
+                    key={merit}
+                    onClick={() => toggleMeritBar(index)}
+                    disabled={!canEditThisProfile}
+                    data-testid={`merit-bar-${index}`}
+                    className={cn(
+                      "w-full text-left p-3 border text-[10px] font-black uppercase transition-all flex items-center gap-3",
+                      meritBars[index]
+                        ? "border-yellow-500 bg-yellow-500/10 text-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.1)]"
+                        : "border-zinc-900 text-zinc-700",
+                      !canEditThisProfile && "cursor-default opacity-50"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 border-2 flex items-center justify-center",
+                      meritBars[index] ? "border-yellow-500 bg-yellow-500" : "border-zinc-700"
+                    )}>
+                      {meritBars[index] && <span className="text-black text-[8px]">✓</span>}
+                    </div>
+                    {merit}
+                  </button>
+                ))}
+             </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
-
-export default ProfilePage;
