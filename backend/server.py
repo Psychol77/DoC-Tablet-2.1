@@ -152,3 +152,31 @@ if __name__ == "__main__":
     # Render używa portu 10000
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+# ==================== ENDPOINTY DANYCH ====================
+
+@api_router.get("/users")
+async def get_all_users():
+    """Pobiera listę wszystkich pracowników dla zakładki Personel."""
+    res = supabase.table("users").select("id, first_name, last_name, rank, badge_number, position, role").execute()
+    return res.data
+
+@api_router.get("/equipment/my")
+async def get_my_equipment(request: Request):
+    """Pobiera sprzęt przypisany do zalogowanego użytkownika."""
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401)
+    
+    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    # Zakładając, że masz tabelę 'equipment' z kolumną 'assigned_to'
+    res = supabase.table("equipment").select("*").eq("assigned_to", payload["sub"]).execute()
+    return res.data
+
+@api_router.get("/users/{user_id}/profile")
+async def get_user_profile(user_id: str):
+    """Pobiera pełne akta pracownika (zakładka Mój profil)."""
+    res = supabase.table("users").select("*").eq("id", user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Nie znaleziono profilu")
+    return res.data[0]
