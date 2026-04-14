@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# CORS - Pozwala frontendowi na Renderze łączyć się z tym serwerem
+# CORS - Pozwala tabletowi (frontendowi) łączyć się z serwerem
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -49,12 +49,14 @@ class UserLogin(BaseModel):
 
 # ==================== POMOCNICY ====================
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Sprawdza hasło przy użyciu bcrypt, z fallbackiem na zwykły tekst."""
+    """Weryfikuje hasło bcrypt z fallbackiem na zwykły tekst."""
+    if not hashed_password:
+        return False
     try:
         # Próba weryfikacji bcrypt
         return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     except Exception:
-        # Jeśli hasło w bazie nie jest haszem bcrypt (zwykły tekst), porównaj bezpośrednio
+        # Jeśli w bazie jest zwykły tekst (nie hasz), porównaj bezpośrednio
         return plain_password == hashed_password
 
 def create_access_token(user_id: str, email: str):
@@ -76,14 +78,15 @@ async def login(data: UserLogin, response: Response):
     res = supabase.table("users").select("*").eq("email", email).execute()
     
     if not res.data:
-        logger.warning(f"Próba logowania na nieistniejący e-mail: {email}")
+        logger.warning(f"Nie znaleziono użytkownika dla e-maila: {email}")
         raise HTTPException(status_code=401, detail="Nieprawidłowy email lub hasło")
     
     user = res.data[0]
     
-    # POPRAWKA: Pobieramy 'password_hash' zamiast 'password' zgodnie ze strukturą bazy
-    stored_password = user.get("password_hash") or user.get("password", "")
+    # POPRAWKA: Pobieramy 'password_hash' zgodnie ze strukturą bazy
+    stored_password = user.get("password_hash")
     
+    # Próba weryfikacji hasła
     if not verify_password(data.password, stored_password):
         logger.warning(f"Błędne hasło dla użytkownika: {email}")
         raise HTTPException(status_code=401, detail="Nieprawidłowy email lub hasło")
@@ -91,7 +94,7 @@ async def login(data: UserLogin, response: Response):
     user_id = str(user["id"])
     token = create_access_token(user_id, email)
     
-    # Ustawienie ciasteczka (Secure=True i SameSite=None są kluczowe dla cross-domain na Renderze)
+    # Ustawienie ciasteczka (z kluczowymi ustawieniami dla Render)
     response.set_cookie(
         key="access_token", 
         value=token, 
@@ -102,14 +105,14 @@ async def login(data: UserLogin, response: Response):
         path="/"
     )
     
-    logger.info(f"Użytkownik {email} zalogowany pomyślnie.")
+    logger.info(f"Zalogowano pomyślnie użytkownika: {email}")
     
     return {
         "id": user_id,
         "email": user["email"],
-        "firstName": user.get("first_name", ""),
+        "firstName": user.get("first_name", "Użytkownik"),
         "lastName": user.get("last_name", ""),
-        "badgeNumber": user.get("badge_number", ""),
+        "badgeNumber": user.get("badge_number", "000"),
         "role": user.get("role", "employee")
     }
 
@@ -143,7 +146,9 @@ async def logout(response: Response):
 
 app.include_router(api_router)
 
+# ==================== START ====================
 if __name__ == "__main__":
     import uvicorn
+    # Render używa portu 10000
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
