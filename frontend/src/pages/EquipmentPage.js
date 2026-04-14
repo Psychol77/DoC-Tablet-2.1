@@ -23,8 +23,8 @@ import { EQUIPMENT_LIST, CATEGORIES, STATUSES, cn } from '../lib/utils';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
-// Items requiring serial number
-const SERIAL_REQUIRED = ['Combat Pistol', 'BBG', 'SMG', 'Taser', 'Radio', 'BodyCam', 'GPS'];
+// Items requiring serial number (only weapons)
+const SERIAL_REQUIRED = ['Combat Pistol', 'BBG', 'SMG', 'Tazer'];
 
 export default function EquipmentPage() {
   const { user, isFounder, canEditProfiles } = useAuth();
@@ -34,7 +34,7 @@ export default function EquipmentPage() {
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newAsset, setNewAsset] = useState({
-    name: '', serialNumber: '', category: 'Wyposażenie', status: 'Dostępny'
+    name: '', serialNumber: '', category: 'Wyposażenie', status: 'Dostępny', amount: 1
   });
 
   // Check if user is command level (can see all equipment)
@@ -67,22 +67,36 @@ export default function EquipmentPage() {
   const handleAddAsset = async (e) => {
     e.preventDefault();
     
-    // Validate serial number for required items
-    if (SERIAL_REQUIRED.includes(newAsset.name) && !newAsset.serialNumber.trim()) {
+    const isWeapon = SERIAL_REQUIRED.includes(newAsset.name);
+    
+    // Validate serial number for weapons
+    if (isWeapon && !newAsset.serialNumber.trim()) {
       toast.error(`Dla ${newAsset.name} numer seryjny jest wymagany!`);
       return;
     }
 
+    // Validate amount for non-weapons
+    const amount = isWeapon ? 1 : parseInt(newAsset.amount) || 1;
+    if (!isWeapon && amount < 1) {
+      toast.error('Ilość musi być co najmniej 1');
+      return;
+    }
+
     try {
-      // Use my-equipment endpoint - auto assigns to current user
+      // For weapons: single item with serial
+      // For others: create N items with auto serial containing quantity info
+      const serialNumber = isWeapon 
+        ? newAsset.serialNumber 
+        : `x${amount}`;
+
       await axios.post(`${API_URL}/api/assets/my-equipment`, {
         ...newAsset,
-        serialNumber: newAsset.serialNumber || `AUTO-${Date.now()}`
+        serialNumber
       }, { withCredentials: true });
       
-      toast.success('Sprzęt dodany i przypisany');
+      toast.success(`Sprzęt dodany: ${newAsset.name}${!isWeapon ? ` (x${amount})` : ''}`);
       setIsAddDialogOpen(false);
-      setNewAsset({ name: '', serialNumber: '', category: 'Wyposażenie', status: 'Dostępny' });
+      setNewAsset({ name: '', serialNumber: '', category: 'Wyposażenie', status: 'Dostępny', amount: 1 });
       fetchAssets();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Błąd dodawania');
@@ -158,7 +172,8 @@ export default function EquipmentPage() {
                       ...newAsset, 
                       name: item?.name || val, 
                       category: item?.category || 'Inne',
-                      serialNumber: item?.hasSerial ? '' : `AUTO-${Date.now()}`
+                      serialNumber: item?.hasSerial ? '' : '',
+                      amount: 1
                     });
                   }}
                 >
@@ -175,17 +190,37 @@ export default function EquipmentPage() {
                 </Select>
               </div>
               
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-black text-zinc-500">Numer Seryjny</Label>
-                <Input 
-                  className="bg-zinc-900 border-zinc-800 font-mono text-white focus:border-yellow-500 rounded-none" 
-                  value={newAsset.serialNumber}
-                  onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})}
-                  data-testid="add-asset-serial"
-                  disabled={!SERIAL_REQUIRED.includes(newAsset.name) && newAsset.name !== ''}
-                  placeholder={SERIAL_REQUIRED.includes(newAsset.name) ? "Wpisz S/N..." : "Generowany automatycznie"}
-                />
-              </div>
+              {/* Serial number - only for weapons */}
+              {SERIAL_REQUIRED.includes(newAsset.name) && (
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase font-black text-zinc-500">Numer Seryjny (S/N)</Label>
+                  <Input 
+                    className="bg-zinc-900 border-zinc-800 font-mono text-white focus:border-yellow-500 rounded-none" 
+                    value={newAsset.serialNumber}
+                    onChange={e => setNewAsset({...newAsset, serialNumber: e.target.value})}
+                    data-testid="add-asset-serial"
+                    placeholder="Wpisz S/N..."
+                    required
+                  />
+                </div>
+              )}
+
+              {/* Amount - for non-weapons */}
+              {newAsset.name && !SERIAL_REQUIRED.includes(newAsset.name) && (
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase font-black text-zinc-500">Ilość (szt.)</Label>
+                  <Input 
+                    type="number"
+                    min="1"
+                    className="bg-zinc-900 border-zinc-800 font-mono text-white focus:border-yellow-500 rounded-none" 
+                    value={newAsset.amount}
+                    onChange={e => setNewAsset({...newAsset, amount: e.target.value})}
+                    data-testid="add-asset-amount"
+                    placeholder="1"
+                    required
+                  />
+                </div>
+              )}
 
               <Button 
                 type="submit" 
@@ -262,11 +297,11 @@ export default function EquipmentPage() {
                     <td className="p-5">
                       <span className={cn(
                         "font-mono font-bold px-2 py-0.5 text-[11px]",
-                        asset.serialNumber && !asset.serialNumber.startsWith('AUTO-') 
+                        asset.serialNumber && !asset.serialNumber.startsWith('x') 
                           ? "text-yellow-500 bg-yellow-500/5 border border-yellow-500/10" 
-                          : "text-zinc-600 bg-zinc-900"
+                          : "text-zinc-400 bg-zinc-900"
                       )}>
-                        {asset.serialNumber?.startsWith('AUTO-') ? 'Auto' : asset.serialNumber}
+                        {asset.serialNumber?.startsWith('x') ? `${asset.serialNumber} szt.` : asset.serialNumber}
                       </span>
                     </td>
                     <td className="p-5">
