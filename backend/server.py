@@ -31,10 +31,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# CORS - Pozwala tabletowi łączyć się z serwerem
+# CORS - Pozwala frontendowi na Renderze łączyć się z tym serwerem
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # W produkcji zmień na adres swojego tabletu na Renderze
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,12 +49,13 @@ class UserLogin(BaseModel):
 
 # ==================== POMOCNICY ====================
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    # Jeśli w bazie masz hasła tekstowe (niezaszyfrowane), użyj: return plain_password == hashed_password
-    # Poniżej wersja bezpieczna (bcrypt):
+    """Sprawdza hasło przy użyciu bcrypt, z fallbackiem na zwykły tekst."""
     try:
+        # Próba weryfikacji bcrypt
         return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
-    except:
-        return plain_password == hashed_password # Fallback dla haseł tekstowych
+    except Exception:
+        # Jeśli hasło w bazie nie jest haszem bcrypt (zwykły tekst), porównaj bezpośrednio
+        return plain_password == hashed_password
 
 def create_access_token(user_id: str, email: str):
     payload = {
@@ -75,17 +76,22 @@ async def login(data: UserLogin, response: Response):
     res = supabase.table("users").select("*").eq("email", email).execute()
     
     if not res.data:
+        logger.warning(f"Próba logowania na nieistniejący e-mail: {email}")
         raise HTTPException(status_code=401, detail="Nieprawidłowy email lub hasło")
     
     user = res.data[0]
     
-    if not verify_password(data.password, user.get("password", "")):
+    # POPRAWKA: Pobieramy 'password_hash' zamiast 'password' zgodnie ze strukturą bazy
+    stored_password = user.get("password_hash") or user.get("password", "")
+    
+    if not verify_password(data.password, stored_password):
+        logger.warning(f"Błędne hasło dla użytkownika: {email}")
         raise HTTPException(status_code=401, detail="Nieprawidłowy email lub hasło")
     
     user_id = str(user["id"])
     token = create_access_token(user_id, email)
     
-    # Ustawienie ciasteczka
+    # Ustawienie ciasteczka (Secure=True i SameSite=None są kluczowe dla cross-domain na Renderze)
     response.set_cookie(
         key="access_token", 
         value=token, 
@@ -96,13 +102,14 @@ async def login(data: UserLogin, response: Response):
         path="/"
     )
     
+    logger.info(f"Użytkownik {email} zalogowany pomyślnie.")
+    
     return {
         "id": user_id,
         "email": user["email"],
-        "firstName": user.get("first_name", "Imię"),
-        "lastName": user.get("last_name", "Nazwisko"),
-        "badgeNumber": user.get("badge_number", "000"),
-        "position": user.get("position", "Kadet"),
+        "firstName": user.get("first_name", ""),
+        "lastName": user.get("last_name", ""),
+        "badgeNumber": user.get("badge_number", ""),
         "role": user.get("role", "employee")
     }
 
@@ -124,23 +131,19 @@ async def get_me(request: Request):
             "email": user["email"],
             "firstName": user.get("first_name", ""),
             "lastName": user.get("last_name", ""),
-            "badgeNumber": user.get("badge_number", ""),
-            "position": user.get("position", ""),
             "role": user.get("role", "employee")
         }
-    except:
+    except Exception:
         raise HTTPException(status_code=401, detail="Sesja wygasła")
 
 @api_router.post("/auth/logout")
 async def logout(response: Response):
-    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="access_token", path="/", samesite="none", secure=True)
     return {"message": "Wylogowano"}
 
 app.include_router(api_router)
 
-# ==================== KLUCZOWY BLOK STARTOWY ====================
 if __name__ == "__main__":
     import uvicorn
-    # Render używa portu 10000
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
