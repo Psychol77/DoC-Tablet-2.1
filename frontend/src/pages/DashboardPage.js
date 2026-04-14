@@ -45,9 +45,12 @@ export default function DashboardPage() {
     
     setIsSubmitting(true);
     try {
+      const isWeapon = selectedGear.hasSerial;
+      const amount = isWeapon ? 1 : parseInt(formData.amount) || 1;
+      
       const assetData = {
         name: selectedGear.name,
-        serialNumber: selectedGear.hasSerial ? formData.serial : `AUTO-${Date.now()}`,
+        serialNumber: isWeapon ? formData.serial : `x${amount}`,
         category: selectedGear.category || 'Inne',
         status: 'W użyciu'
       };
@@ -56,7 +59,7 @@ export default function DashboardPage() {
         withCredentials: true
       });
 
-      toast.success(`Pobrano pomyślnie: ${selectedGear.name}`);
+      toast.success(`Pobrano pomyślnie: ${selectedGear.name}${!isWeapon ? ` (x${amount})` : ''}`);
       setSelectedGear(null);
       setFormData({ serial: '', amount: 1 });
       fetchRecentAssets();
