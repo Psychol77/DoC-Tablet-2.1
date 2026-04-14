@@ -50,24 +50,27 @@ export const MERIT_BARS = [
 ];
 
 // Lista wyposażenia z konfiguracją S/N
+// hasSerial: true = wymaga numeru seryjnego (broń)
+// hasSerial: false = wymaga podania ilości
 export const EQUIPMENT_LIST = [
+  // Broń - numer seryjny wymagany
   { id: 'combat_pistol', name: 'Combat Pistol', category: 'Broń', hasSerial: true },
-  { id: 'taser', name: 'Taser', category: 'Broń', hasSerial: true },
+  { id: 'tazer', name: 'Tazer', category: 'Broń', hasSerial: true },
   { id: 'bbg', name: 'BBG', category: 'Broń', hasSerial: true },
   { id: 'smg', name: 'SMG', category: 'Broń', hasSerial: true },
-  { id: 'radio', name: 'Radio', category: 'Elektronika', hasSerial: true },
-  { id: 'bodycam', name: 'BodyCam', category: 'Elektronika', hasSerial: true },
-  { id: 'gps', name: 'GPS', category: 'Elektronika', hasSerial: true },
-  { id: 'ammo_9mm', name: 'Amunicja 9mm', category: 'Amunicja', hasSerial: false },
-  { id: 'ammo_bbg', name: 'Amunicja BBG', category: 'Amunicja', hasSerial: false },
-  { id: 'ammo_smg', name: 'Amunicja SMG', category: 'Amunicja', hasSerial: false },
-  { id: 'handcuffs', name: 'Kajdanki', category: 'Wyposażenie', hasSerial: false },
-  { id: 'flashbang', name: 'FlashBang', category: 'Wyposażenie', hasSerial: false },
-  { id: 'gas', name: 'Gaz służbowy', category: 'Wyposażenie', hasSerial: false },
-  { id: 'baton', name: 'Pałka policyjna', category: 'Wyposażenie', hasSerial: false },
+  // Wyposażenie - ilość
+  { id: 'ammo_9mm', name: 'Ammo-9mm', category: 'Amunicja', hasSerial: false },
+  { id: 'rubber_bullets', name: 'Gumowe kule', category: 'Amunicja', hasSerial: false },
+  { id: 'bodycam', name: 'BodyCam', category: 'Elektronika', hasSerial: false },
   { id: 'flashlight', name: 'Latarka', category: 'Wyposażenie', hasSerial: false },
+  { id: 'gas', name: 'Gaz', category: 'Wyposażenie', hasSerial: false },
+  { id: 'radio', name: 'Radio', category: 'Elektronika', hasSerial: false },
+  { id: 'baton', name: 'Pałka policyjna', category: 'Wyposażenie', hasSerial: false },
+  { id: 'vest_plate_1', name: 'Wkład do kamizelki 1.0', category: 'Odzież', hasSerial: false },
+  { id: 'vest_plate_2', name: 'Wkład do kamizelki 2.0', category: 'Odzież', hasSerial: false },
+  { id: 'vest_plate_3', name: 'Wkład do kamizelki 3.0', category: 'Odzież', hasSerial: false },
   { id: 'vest', name: 'Kamizelka policyjna', category: 'Odzież', hasSerial: false },
-  { id: 'vest_plates', name: 'Wkłady do kamizelki', category: 'Odzież', hasSerial: false },
+  { id: 'handcuffs', name: 'Kajdanki', category: 'Wyposażenie', hasSerial: false },
 ];
 
 // Kategorie sprzętu
